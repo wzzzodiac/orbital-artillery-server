@@ -1,0 +1,18 @@
+{
+  "name": "orbital-artillery-server",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Authoritative multiplayer server scaffold for Orbital Artillery.",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "check": "node --check server.js && node --check rooms.js && node --check game.js && node --check turns.js && node --check physics.js && node --check terrain.js && node --check validation.js && node --check config.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "socket.io": "^4.8.1"
+  }
+}
