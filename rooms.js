@@ -2,6 +2,7 @@ import { randomInt } from 'node:crypto';
 import { CONFIG } from './config.js';
 
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const VALID_TEAMS = new Set(['A', 'B']);
 
 export const roomStore = new Map();
 
@@ -76,6 +77,50 @@ export function findRoomBySocket(socketId) {
   return null;
 }
 
+export function setPlayerReady(socketId, ready) {
+  const room = findRoomBySocket(socketId);
+  if (!room) return { ok: false, error: 'not_in_room' };
+  if (room.status !== 'lobby') return { ok: false, error: 'room_already_started' };
+
+  const player = room.players.find(entry => entry.id === socketId);
+  player.ready = Boolean(ready);
+  return { ok: true, room };
+}
+
+export function setPlayerTeam(socketId, team) {
+  const room = findRoomBySocket(socketId);
+  if (!room) return { ok: false, error: 'not_in_room' };
+  if (room.status !== 'lobby') return { ok: false, error: 'room_already_started' };
+  if (!VALID_TEAMS.has(team)) return { ok: false, error: 'invalid_team' };
+
+  const player = room.players.find(entry => entry.id === socketId);
+  if (player.team === team) return { ok: true, room };
+
+  const teamCount = room.players.filter(entry => entry.team === team).length;
+  if (teamCount >= 4) return { ok: false, error: 'team_full' };
+
+  player.team = team;
+  player.ready = false;
+  return { ok: true, room };
+}
+
+export function startRoom(socketId) {
+  const room = findRoomBySocket(socketId);
+  if (!room) return { ok: false, error: 'not_in_room' };
+  if (room.status !== 'lobby') return { ok: false, error: 'room_already_started' };
+  if (room.hostId !== socketId) return { ok: false, error: 'host_only' };
+  if (room.players.length < 2) return { ok: false, error: 'not_enough_players' };
+  if (!room.players.every(player => player.ready)) return { ok: false, error: 'players_not_ready' };
+
+  const teamA = room.players.filter(player => player.team === 'A').length;
+  const teamB = room.players.filter(player => player.team === 'B').length;
+  if (teamA === 0 || teamB === 0) return { ok: false, error: 'both_teams_required' };
+
+  room.status = 'started';
+  room.startedAt = Date.now();
+  return { ok: true, room };
+}
+
 export function removePlayer(socketId) {
   const room = findRoomBySocket(socketId);
   if (!room) return null;
@@ -87,5 +132,8 @@ export function removePlayer(socketId) {
   }
 
   if (room.hostId === socketId) room.hostId = room.players[0].id;
+  if (room.status === 'lobby') {
+    for (const player of room.players) player.ready = false;
+  }
   return { deleted: false, roomCode: room.code, room };
 }
