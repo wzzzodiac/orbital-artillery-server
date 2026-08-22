@@ -8,7 +8,10 @@ import {
   joinRoom,
   publicRoomState,
   removePlayer,
-  roomStore
+  roomStore,
+  setPlayerReady,
+  setPlayerTeam,
+  startRoom
 } from './rooms.js';
 import { isValidRoomCode, normalizePlayerName } from './validation.js';
 
@@ -105,7 +108,7 @@ io.on('connection', socket => {
       roomActionCount = 0;
     }
     roomActionCount += 1;
-    return roomActionCount <= 10;
+    return roomActionCount <= 20;
   }
 
   socket.on('create_room', (payload, reply = () => {}) => {
@@ -133,6 +136,31 @@ io.on('connection', socket => {
     if (!result.ok) return reply(result);
     socket.join(code);
     reply({ ok: true, room: publicRoomState(result.room), playerId: socket.id });
+    emitRoomState(result.room);
+  });
+
+  socket.on('set_ready', (payload, reply = () => {}) => {
+    if (!allowRoomAction()) return reply({ ok: false, error: 'room_action_rate_limited' });
+    const result = setPlayerReady(socket.id, payload?.ready);
+    if (!result.ok) return reply(result);
+    reply({ ok: true, room: publicRoomState(result.room) });
+    emitRoomState(result.room);
+  });
+
+  socket.on('set_team', (payload, reply = () => {}) => {
+    if (!allowRoomAction()) return reply({ ok: false, error: 'room_action_rate_limited' });
+    const team = String(payload?.team ?? '').toUpperCase();
+    const result = setPlayerTeam(socket.id, team);
+    if (!result.ok) return reply(result);
+    reply({ ok: true, room: publicRoomState(result.room) });
+    emitRoomState(result.room);
+  });
+
+  socket.on('start_game', (_payload, reply = () => {}) => {
+    if (!allowRoomAction()) return reply({ ok: false, error: 'room_action_rate_limited' });
+    const result = startRoom(socket.id);
+    if (!result.ok) return reply(result);
+    reply({ ok: true, room: publicRoomState(result.room) });
     emitRoomState(result.room);
   });
 
