@@ -9,6 +9,7 @@ const WORLD_HEIGHT = 5000;
 const VIEWPORT_WIDTH = 1000;
 const VIEWPORT_HEIGHT = 1000;
 const COUNTDOWN_MS = 7000;
+const VEHICLE_GROUND_OFFSET = 8;
 
 export const roomStore = new Map();
 
@@ -53,7 +54,7 @@ export function setPlayerReady(socketId, ready) { const room = findRoomBySocket(
 export function setPlayerTeam(socketId, team) { const room = findRoomBySocket(socketId); if (!room) return { ok: false, error: 'not_in_room' }; if (room.status !== 'lobby') return { ok: false, error: 'room_already_started' }; if (room.mode !== 'team') return { ok: false, error: 'teams_disabled' }; if (!VALID_TEAMS.has(team)) return { ok: false, error: 'invalid_team' }; const player = room.players.find(entry => entry.id === socketId); if (player.team === team) return { ok: true, room }; if (room.players.filter(entry => entry.team === team).length >= 4) return { ok: false, error: 'team_full' }; player.team = team; player.ready = false; return { ok: true, room }; }
 
 function terrainY(x) { return 3370 + Math.sin(x / 430) * 180 + Math.sin(x / 970 + 0.7) * 130; }
-function makeSpawn(x, facing) { return { x, y: Math.round(terrainY(x) - 42), facing }; }
+function makeSpawn(x, facing) { return { x, y: Math.round(terrainY(x) - VEHICLE_GROUND_OFFSET), facing }; }
 function assignArena(room) {
   if (room.mode === 'survival') { const slots = [620,1140,1680,2220,2780,3320,3860,4380]; room.players.forEach((player,index)=>{const x=slots[index];player.spawn=makeSpawn(x,x<WORLD_WIDTH/2?1:-1);}); }
   else { const a=room.players.filter(p=>p.team==='A'), b=room.players.filter(p=>p.team==='B'), left=[620,1050,1480,1910], right=[4380,3950,3520,3090]; a.forEach((p,i)=>p.spawn=makeSpawn(left[i],1)); b.forEach((p,i)=>p.spawn=makeSpawn(right[i],-1)); }
