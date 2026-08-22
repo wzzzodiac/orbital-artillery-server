@@ -3,6 +3,8 @@ import { CONFIG } from './config.js';
 
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const VALID_TEAMS = new Set(['A', 'B']);
+const ARENA_WIDTH = 1600;
+const ARENA_HEIGHT = 900;
 
 export const roomStore = new Map();
 
@@ -21,7 +23,8 @@ function publicPlayer(player, hostId) {
     name: player.name,
     ready: player.ready,
     team: player.team,
-    isHost: player.id === hostId
+    isHost: player.id === hostId,
+    spawn: player.spawn ?? null
   };
 }
 
@@ -30,6 +33,7 @@ export function publicRoomState(room) {
     code: room.code,
     status: room.status,
     maxPlayers: CONFIG.maxPlayers,
+    arena: room.arena ?? null,
     players: room.players.map(player => publicPlayer(player, room.hostId))
   };
 }
@@ -51,7 +55,8 @@ export function createRoom(socketId, playerName) {
     status: 'lobby',
     hostId: socketId,
     createdAt: Date.now(),
-    players: [{ id: socketId, name: playerName, ready: false, team: 'A' }]
+    arena: null,
+    players: [{ id: socketId, name: playerName, ready: false, team: 'A', spawn: null }]
   };
   roomStore.set(code, room);
   return { ok: true, room };
@@ -66,7 +71,7 @@ export function joinRoom(roomCode, socketId, playerName) {
 
   const teamA = room.players.filter(player => player.team === 'A').length;
   const teamB = room.players.filter(player => player.team === 'B').length;
-  room.players.push({ id: socketId, name: playerName, ready: false, team: teamA <= teamB ? 'A' : 'B' });
+  room.players.push({ id: socketId, name: playerName, ready: false, team: teamA <= teamB ? 'A' : 'B', spawn: null });
   return { ok: true, room };
 }
 
@@ -104,6 +109,38 @@ export function setPlayerTeam(socketId, team) {
   return { ok: true, room };
 }
 
+function assignArena(room) {
+  const teamA = room.players.filter(player => player.team === 'A');
+  const teamB = room.players.filter(player => player.team === 'B');
+  const leftSlots = [
+    { x: 190, y: 620 },
+    { x: 335, y: 575 },
+    { x: 480, y: 625 },
+    { x: 610, y: 555 }
+  ];
+  const rightSlots = [
+    { x: 1410, y: 620 },
+    { x: 1265, y: 575 },
+    { x: 1120, y: 625 },
+    { x: 990, y: 555 }
+  ];
+
+  teamA.forEach((player, index) => {
+    player.spawn = { ...leftSlots[index], facing: 1 };
+  });
+  teamB.forEach((player, index) => {
+    player.spawn = { ...rightSlots[index], facing: -1 };
+  });
+
+  room.arena = {
+    id: 'phase2-valley-01',
+    width: ARENA_WIDTH,
+    height: ARENA_HEIGHT,
+    seed: room.code,
+    generatedAt: Date.now()
+  };
+}
+
 export function startRoom(socketId) {
   const room = findRoomBySocket(socketId);
   if (!room) return { ok: false, error: 'not_in_room' };
@@ -116,6 +153,7 @@ export function startRoom(socketId) {
   const teamB = room.players.filter(player => player.team === 'B').length;
   if (teamA === 0 || teamB === 0) return { ok: false, error: 'both_teams_required' };
 
+  assignArena(room);
   room.status = 'started';
   room.startedAt = Date.now();
   return { ok: true, room };
