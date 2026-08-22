@@ -36,8 +36,17 @@ setInterval(() => {
   const now = Date.now();
   for (const room of roomStore.values()) {
     let changed = null;
-    if (room.status === 'countdown' && now >= room.match?.startAt) changed = activateRoom(room.code, now);
-    else if (room.status === 'started') changed = advanceTurnIfDue(room.code, now);
+    if (room.status === 'countdown' && now >= room.match?.startAt) {
+      changed = activateRoom(room.code, now);
+    } else if (room.status === 'started') {
+      // Watchdog: normally this runs once, but bounded catch-up prevents a stale
+      // turn from remaining stuck if the event loop was delayed for a while.
+      for (let catchUp = 0; catchUp < 8; catchUp += 1) {
+        const advanced = advanceTurnIfDue(room.code, now);
+        if (!advanced) break;
+        changed = advanced;
+      }
+    }
     if (changed) emitRoomState(changed);
   }
 }, 250).unref();
@@ -55,7 +64,13 @@ io.on('connection', socket => {
   socket.on('set_team', (payload, reply = () => {}) => { if (!allowRoomAction()) return reply({ ok: false, error: 'room_action_rate_limited' }); const result = setPlayerTeam(socket.id, String(payload?.team ?? '').toUpperCase()); if (!result.ok) return reply(result); reply({ ok: true, room: publicRoomState(result.room) }); emitRoomState(result.room); });
   socket.on('start_game', (_payload, reply = () => {}) => { if (!allowRoomAction()) return reply({ ok: false, error: 'room_action_rate_limited' }); const result = startRoom(socket.id); if (!result.ok) return reply(result); reply({ ok: true, room: publicRoomState(result.room) }); emitRoomState(result.room); });
 
-  const idleTimer = setInterval(() => { if (Date.now() - lastActivityAt >= CONFIG.idleSocketMinutes * 60_000) socket.disconnect(true); }, 60_000); idleTimer.unref();
+  const idleTimer = setInterval(() => {
+    const room = findRoomBySocket(socket.id);
+    const protectedByActiveMatch = room && (room.status === 'countdown' || room.status === 'started');
+    if (!protectedByActiveMatch && Date.now() - lastActivityAt >= CONFIG.idleSocketMinutes * 60_000) socket.disconnect(true);
+  }, 60_000);
+  idleTimer.unref();
+
   socket.on('disconnect', reason => { clearInterval(idleTimer); const removal = removePlayer(socket.id); if (removal?.room) emitRoomState(removal.room); console.info(`socket disconnected: ${socket.id} (${reason})`); });
 });
 
