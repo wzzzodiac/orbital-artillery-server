@@ -9,7 +9,7 @@ const WORLD_HEIGHT = 5000;
 const VIEWPORT_WIDTH = 1000;
 const VIEWPORT_HEIGHT = 1000;
 const COUNTDOWN_MS = 7000;
-const TURN_DURATION_MS = 20000;
+const TURN_DURATION_MS = 40000;
 const VEHICLE_GROUND_OFFSET = 8;
 
 export const roomStore = new Map();
