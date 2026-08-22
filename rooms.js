@@ -11,8 +11,25 @@ const VIEWPORT_HEIGHT = 1000;
 const COUNTDOWN_MS = 7000;
 const TURN_DURATION_MS = 40000;
 const VEHICLE_GROUND_OFFSET = 8;
+const MOVE_STEP = 35;
+const MOVE_RADIUS = 260;
+const JUMP_DISTANCE = 90;
+const JUMP_DURATION_MS = 520;
+const JUMPS_PER_TURN = 2;
+const MIN_ANGLE = 5;
+const MAX_ANGLE = 85;
+const MIN_POWER = 10;
+const MAX_POWER = 100;
+const DEFAULT_ANGLE = 45;
+const DEFAULT_POWER = 55;
+const PROJECTILE_GRAVITY = 480;
+const PROJECTILE_DT = 0.02;
+const PROJECTILE_MAX_SECONDS = 8;
+const IMPACT_PAUSE_MS = 650;
 
 export const roomStore = new Map();
+
+const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
 function generateRoomCode() {
   for (let attempt = 0; attempt < 50; attempt += 1) {
@@ -24,19 +41,47 @@ function generateRoomCode() {
 }
 
 function publicPlayer(player, hostId) {
-  return { id: player.id, name: player.name, ready: player.ready, team: player.team, isHost: player.id === hostId, spawn: player.spawn ?? null };
+  return {
+    id: player.id,
+    name: player.name,
+    ready: player.ready,
+    team: player.team,
+    isHost: player.id === hostId,
+    spawn: player.spawn ?? null,
+    motion: player.motion ?? null
+  };
 }
 
 export function publicRoomState(room) {
-  return { code: room.code, status: room.status, mode: room.mode, maxPlayers: CONFIG.maxPlayers, arena: room.arena ?? null, match: room.match ?? null, camera: room.camera ?? null, players: room.players.map(player => publicPlayer(player, room.hostId)) };
+  return {
+    code: room.code,
+    status: room.status,
+    mode: room.mode,
+    maxPlayers: CONFIG.maxPlayers,
+    arena: room.arena ?? null,
+    match: room.match ?? null,
+    camera: room.camera ?? null,
+    players: room.players.map(player => publicPlayer(player, room.hostId))
+  };
 }
+
 export function getRoom(roomCode) { return roomStore.get(roomCode) ?? null; }
 export function canCreateRoom() { return roomStore.size < CONFIG.maxRooms; }
 
 export function createRoom(socketId, playerName) {
   if (!canCreateRoom()) return { ok: false, error: 'server_room_capacity' };
   const code = generateRoomCode();
-  const room = { code, status: 'lobby', mode: 'team', hostId: socketId, createdAt: Date.now(), arena: null, match: null, camera: null, players: [{ id: socketId, name: playerName, ready: false, team: 'A', spawn: null }] };
+  const room = {
+    code,
+    status: 'lobby',
+    mode: 'team',
+    hostId: socketId,
+    createdAt: Date.now(),
+    arena: null,
+    match: null,
+    camera: null,
+    players: [{ id: socketId, name: playerName, ready: false, team: 'A', spawn: null, motion: null }]
+  };
   roomStore.set(code, room);
   return { ok: true, room };
 }
@@ -49,7 +94,7 @@ export function joinRoom(roomCode, socketId, playerName) {
   if (room.players.some(player => player.id === socketId)) return { ok: true, room };
   const teamA = room.players.filter(player => player.team === 'A').length;
   const teamB = room.players.filter(player => player.team === 'B').length;
-  room.players.push({ id: socketId, name: playerName, ready: false, team: teamA <= teamB ? 'A' : 'B', spawn: null });
+  room.players.push({ id: socketId, name: playerName, ready: false, team: teamA <= teamB ? 'A' : 'B', spawn: null, motion: null });
   return { ok: true, room };
 }
 
@@ -92,8 +137,13 @@ export function setPlayerTeam(socketId, team) {
   return { ok: true, room };
 }
 
-function terrainY(x) { return 3370 + Math.sin(x / 430) * 180 + Math.sin(x / 970 + 0.7) * 130; }
-function makeSpawn(x, facing) { return { x, y: Math.round(terrainY(x) - VEHICLE_GROUND_OFFSET), facing }; }
+function terrainY(x) {
+  return 3370 + Math.sin(x / 430) * 180 + Math.sin(x / 970 + 0.7) * 130;
+}
+
+function makeSpawn(x, facing) {
+  return { x, y: Math.round(terrainY(x) - VEHICLE_GROUND_OFFSET), facing };
+}
 
 function buildTurnOrder(room) {
   if (room.mode === 'survival') return room.players.map(player => player.id);
@@ -117,18 +167,33 @@ function createWind() {
   return { direction: direction < 0 ? 'left' : 'right', strength, signed: strength * direction };
 }
 
+function activePlayer(room) {
+  return room.players.find(player => player.id === room.match?.activePlayerId) ?? null;
+}
+
 function beginTurn(room, requestedIndex, now = Date.now()) {
   const liveIds = new Set(room.players.map(player => player.id));
   room.match.turnOrder = room.match.turnOrder.filter(id => liveIds.has(id));
   if (room.match.turnOrder.length === 0) return null;
   const index = ((requestedIndex % room.match.turnOrder.length) + room.match.turnOrder.length) % room.match.turnOrder.length;
   const activePlayerId = room.match.turnOrder[index];
+  const player = room.players.find(entry => entry.id === activePlayerId);
+  if (!player?.spawn) return null;
+
+  for (const entry of room.players) entry.motion = null;
   room.match.turnIndex = index;
   room.match.turnNumber = (room.match.turnNumber ?? 0) + 1;
   room.match.activePlayerId = activePlayerId;
   room.match.turnStartedAt = now;
   room.match.turnEndsAt = now + room.match.turnDurationMs;
   room.match.wind = createWind();
+  room.match.movementOriginX = player.spawn.x;
+  room.match.movementRadius = MOVE_RADIUS;
+  room.match.jumpsRemaining = JUMPS_PER_TURN;
+  room.match.aimAngle = DEFAULT_ANGLE;
+  room.match.aimPower = DEFAULT_POWER;
+  room.match.projectile = null;
+  room.match.shotResolvedAt = null;
   room.camera = { mode: 'follow', targetPlayerId: activePlayerId };
   return room;
 }
@@ -147,9 +212,34 @@ function assignArena(room) {
   }
   const now = Date.now();
   const turnOrder = buildTurnOrder(room);
-  room.arena = { id: 'phase3-expanse-01', worldWidth: WORLD_WIDTH, worldHeight: WORLD_HEIGHT, viewportWidth: VIEWPORT_WIDTH, viewportHeight: VIEWPORT_HEIGHT, unitsWide: 5, unitsHigh: 5, viewportUnitsWide: 1, viewportUnitsHigh: 1, seed: room.code, generatedAt: now };
+  room.arena = {
+    id: 'phase4-expanse-01', worldWidth: WORLD_WIDTH, worldHeight: WORLD_HEIGHT,
+    viewportWidth: VIEWPORT_WIDTH, viewportHeight: VIEWPORT_HEIGHT,
+    unitsWide: 5, unitsHigh: 5, viewportUnitsWide: 1, viewportUnitsHigh: 1,
+    seed: room.code, generatedAt: now
+  };
   room.camera = { mode: 'follow', targetPlayerId: turnOrder[0] ?? room.players[0].id };
-  room.match = { countdownStartedAt: now, startAt: now + COUNTDOWN_MS, countdownMs: COUNTDOWN_MS, initialPlayerId: turnOrder[0] ?? room.players[0].id, turnDurationMs: TURN_DURATION_MS, turnOrder, turnIndex: -1, turnNumber: 0, activePlayerId: null, turnStartedAt: null, turnEndsAt: null, wind: null };
+  room.match = {
+    countdownStartedAt: now,
+    startAt: now + COUNTDOWN_MS,
+    countdownMs: COUNTDOWN_MS,
+    initialPlayerId: turnOrder[0] ?? room.players[0].id,
+    turnDurationMs: TURN_DURATION_MS,
+    turnOrder,
+    turnIndex: -1,
+    turnNumber: 0,
+    activePlayerId: null,
+    turnStartedAt: null,
+    turnEndsAt: null,
+    wind: null,
+    movementOriginX: null,
+    movementRadius: MOVE_RADIUS,
+    jumpsRemaining: JUMPS_PER_TURN,
+    aimAngle: DEFAULT_ANGLE,
+    aimPower: DEFAULT_POWER,
+    projectile: null,
+    shotResolvedAt: null
+  };
 }
 
 export function startRoom(socketId) {
@@ -178,10 +268,132 @@ export function activateRoom(roomCode, now = Date.now()) {
   return beginTurn(room, 0, now);
 }
 
+function validateTurnAction(socketId) {
+  const room = findRoomBySocket(socketId);
+  if (!room) return { ok: false, error: 'not_in_room' };
+  if (room.status !== 'started') return { ok: false, error: 'match_not_started' };
+  if (room.match?.activePlayerId !== socketId) return { ok: false, error: 'not_your_turn' };
+  if (room.match?.projectile) return { ok: false, error: 'shot_in_flight' };
+  const player = activePlayer(room);
+  if (!player?.spawn) return { ok: false, error: 'player_missing' };
+  if (player.motion?.endsAt && Date.now() < player.motion.endsAt) return { ok: false, error: 'player_in_motion' };
+  return { ok: true, room, player };
+}
+
+export function moveActivePlayer(socketId, direction) {
+  const check = validateTurnAction(socketId);
+  if (!check.ok) return check;
+  const dir = Number(direction) < 0 ? -1 : Number(direction) > 0 ? 1 : 0;
+  if (!dir) return { ok: false, error: 'invalid_direction' };
+  const { room, player } = check;
+  const origin = room.match.movementOriginX;
+  const minX = Math.max(40, origin - room.match.movementRadius);
+  const maxX = Math.min(WORLD_WIDTH - 40, origin + room.match.movementRadius);
+  const nextX = clamp(player.spawn.x + dir * MOVE_STEP, minX, maxX);
+  if (Math.abs(nextX - player.spawn.x) < 0.01) return { ok: false, error: 'movement_limit' };
+  player.spawn = makeSpawn(nextX, dir);
+  player.motion = null;
+  return { ok: true, room };
+}
+
+export function jumpActivePlayer(socketId, direction) {
+  const check = validateTurnAction(socketId);
+  if (!check.ok) return check;
+  const { room, player } = check;
+  if ((room.match.jumpsRemaining ?? 0) <= 0) return { ok: false, error: 'no_jumps_remaining' };
+  const dir = Number(direction) < 0 ? -1 : Number(direction) > 0 ? 1 : (player.spawn.facing || 1);
+  const origin = room.match.movementOriginX;
+  const minX = Math.max(40, origin - room.match.movementRadius);
+  const maxX = Math.min(WORLD_WIDTH - 40, origin + room.match.movementRadius);
+  const from = { ...player.spawn };
+  const nextX = clamp(player.spawn.x + dir * JUMP_DISTANCE, minX, maxX);
+  if (Math.abs(nextX - player.spawn.x) < 0.01) return { ok: false, error: 'movement_limit' };
+  const to = makeSpawn(nextX, dir);
+  const now = Date.now();
+  player.spawn = to;
+  player.motion = { type: 'jump', startedAt: now, endsAt: now + JUMP_DURATION_MS, fromX: from.x, fromY: from.y, toX: to.x, toY: to.y, apex: 95 };
+  room.match.jumpsRemaining -= 1;
+  return { ok: true, room };
+}
+
+export function setAim(socketId, angle, power) {
+  const check = validateTurnAction(socketId);
+  if (!check.ok) return check;
+  const { room } = check;
+  if (angle != null) room.match.aimAngle = clamp(Number(angle) || DEFAULT_ANGLE, MIN_ANGLE, MAX_ANGLE);
+  if (power != null) room.match.aimPower = clamp(Number(power) || DEFAULT_POWER, MIN_POWER, MAX_POWER);
+  return { ok: true, room };
+}
+
+function simulateProjectile(room, player, angle, power, now) {
+  const facing = player.spawn.facing || 1;
+  const radians = angle * Math.PI / 180;
+  const speed = 320 + power * 9;
+  const startX = player.spawn.x + facing * 24;
+  const startY = player.spawn.y - 24;
+  const vx = Math.cos(radians) * speed * facing;
+  const vy = -Math.sin(radians) * speed;
+  const windAccel = (room.match.wind?.signed ?? 0) * 1.5;
+  let impactX = startX;
+  let impactY = startY;
+  let impactT = PROJECTILE_MAX_SECONDS;
+  let reason = 'timeout';
+
+  for (let t = PROJECTILE_DT; t <= PROJECTILE_MAX_SECONDS; t += PROJECTILE_DT) {
+    const x = startX + vx * t + 0.5 * windAccel * t * t;
+    const y = startY + vy * t + 0.5 * PROJECTILE_GRAVITY * t * t;
+    impactX = x;
+    impactY = y;
+    impactT = t;
+    if (x < 0 || x > WORLD_WIDTH || y > WORLD_HEIGHT) { reason = 'out_of_bounds'; break; }
+    if (t > 0.08 && y >= terrainY(clamp(x, 0, WORLD_WIDTH))) {
+      impactY = terrainY(clamp(x, 0, WORLD_WIDTH));
+      reason = 'terrain';
+      break;
+    }
+  }
+
+  const durationMs = Math.max(220, Math.round(impactT * 1000));
+  return {
+    id: `${room.code}-${room.match.turnNumber}-${now}`,
+    ownerPlayerId: player.id,
+    startedAt: now,
+    impactAt: now + durationMs,
+    resolveAt: now + durationMs + IMPACT_PAUSE_MS,
+    durationMs,
+    startX,
+    startY,
+    vx,
+    vy,
+    gravity: PROJECTILE_GRAVITY,
+    windAccel,
+    impactX: clamp(impactX, 0, WORLD_WIDTH),
+    impactY,
+    impactReason: reason,
+    angle,
+    power
+  };
+}
+
+export function fireProjectile(socketId, now = Date.now()) {
+  const check = validateTurnAction(socketId);
+  if (!check.ok) return check;
+  const { room, player } = check;
+  const projectile = simulateProjectile(room, player, room.match.aimAngle, room.match.aimPower, now);
+  room.match.projectile = projectile;
+  room.match.turnEndsAt = projectile.resolveAt;
+  room.camera = { mode: 'projectile', targetPlayerId: player.id, projectileId: projectile.id };
+  return { ok: true, room };
+}
+
 export function advanceTurnIfDue(roomCode, now = Date.now()) {
   const room = getRoom(roomCode);
   if (!room || room.status !== 'started' || !room.match?.turnEndsAt) return null;
-  if (now < room.match.turnEndsAt) return null;
+  const projectile = room.match.projectile;
+  if (projectile && now < projectile.resolveAt) return null;
+  if (!projectile && now < room.match.turnEndsAt) return null;
+  if (projectile) room.match.shotResolvedAt = now;
+  room.match.projectile = null;
   return beginTurn(room, room.match.turnIndex + 1, now);
 }
 
