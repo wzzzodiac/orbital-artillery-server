@@ -8,7 +8,7 @@ const WORLD_WIDTH = 5000;
 const WORLD_HEIGHT = 5000;
 const VIEWPORT_WIDTH = 1000;
 const VIEWPORT_HEIGHT = 1000;
-const COUNTDOWN_MS = 6000;
+const COUNTDOWN_MS = 7000;
 
 export const roomStore = new Map();
 
