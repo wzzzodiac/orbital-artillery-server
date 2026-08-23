@@ -30,7 +30,8 @@ const PROJECTILE_MAX_SECONDS = 8;
 const IMPACT_PAUSE_MS = 900;
 const CRATER_RADIUS = 135;
 const CRATER_DEPTH = 165;
-const FALL_DURATION_MS = 760;
+const FALL_DURATION_MS = 2200;
+const VOID_FINISH_BUFFER_MS = 250;
 const MAX_HP = 100;
 const EXPLOSION_RADIUS = 260;
 const EXPLOSION_MAX_DAMAGE = 45;
@@ -228,7 +229,12 @@ function finishMatch(room, result, now = Date.now()) {
   room.status = 'finished'; room.match.result = result; room.match.finishedAt = now; room.match.activePlayerId = null; room.match.turnEndsAt = null; room.match.projectile = null; room.camera = { mode: 'follow', targetPlayerId: result.winnerPlayerId ?? room.players.find(player => player.alive !== false)?.id ?? room.players[0]?.id ?? null };
   return room;
 }
-function evaluateImmediateFinish(room, now = Date.now()) { const result = resultFor(room); return result ? finishMatch(room, result, now) : room; }
+function beginVoidResolution(room, player, now = Date.now(), motionEndsAt = now + FALL_DURATION_MS) {
+  room.match.pendingResult = resultFor(room);
+  room.match.turnEndsAt = Math.max(room.match.turnEndsAt ?? 0, motionEndsAt + VOID_FINISH_BUFFER_MS);
+  room.camera = { mode: 'follow', targetPlayerId: player.id };
+  return room;
+}
 
 function beginTurn(room, requestedIndex, now = Date.now()) {
   if (room.status === 'finished') return room;
@@ -269,26 +275,33 @@ function validateTurnAction(socketId) {
   const player = activePlayer(room); if (!player?.spawn || player.alive === false) return { ok: false, error: 'player_missing' }; if (player.motion?.endsAt && Date.now() < player.motion.endsAt) return { ok: false, error: 'player_in_motion' };
   return { ok: true, room, player };
 }
-function killByVoid(room, player, now = Date.now()) {
-  const from = { ...player.spawn }; player.hp = 0; player.alive = false; player.spawn = { ...player.spawn, y: WORLD_HEIGHT + 120 };
-  player.motion = { type: 'fall', startedAt: now, endsAt: now + FALL_DURATION_MS, fromX: from.x, fromY: from.y, toX: from.x, toY: WORLD_HEIGHT + 120, apex: 0 }; return true;
+function killByVoid(room, player, now = Date.now(), from = player.spawn, toX = player.spawn.x, facing = player.spawn.facing || 1, motionType = 'fall') {
+  const targetY = WORLD_HEIGHT + 120, endsAt = now + FALL_DURATION_MS;
+  player.hp = 0; player.alive = false; player.spawn = { x: toX, y: targetY, facing };
+  player.motion = { type: motionType, startedAt: now, endsAt, fromX: from.x, fromY: from.y, toX, toY: targetY, apex: motionType === 'jump' ? JUMP_APEX : 0 };
+  beginVoidResolution(room, player, now, endsAt);
+  return true;
 }
-function markOutIfVoid(room, player, now = Date.now()) { return terrainSurface(room, player.spawn.x) >= WORLD_HEIGHT - 1 ? killByVoid(room, player, now) : false; }
 
 export function moveActivePlayer(socketId, direction) {
   const check = validateTurnAction(socketId); if (!check.ok) return check; const dir = Number(direction) < 0 ? -1 : Number(direction) > 0 ? 1 : 0; if (!dir) return { ok: false, error: 'invalid_direction' };
-  const { room, player } = check, origin = room.match.movementOriginX, minX = Math.max(40, origin - room.match.movementRadius), maxX = Math.min(WORLD_WIDTH - 40, origin + room.match.movementRadius), nextX = clamp(player.spawn.x + dir * MOVE_STEP, minX, maxX);
+  const { room, player } = check, origin = room.match.movementOriginX, minX = Math.max(40, origin - room.match.movementRadius), maxX = Math.min(WORLD_WIDTH - 40, origin + room.match.movementRadius), from = { ...player.spawn }, nextX = clamp(player.spawn.x + dir * MOVE_STEP, minX, maxX);
   if (Math.abs(nextX - player.spawn.x) < 0.01) return { ok: false, error: 'movement_limit' };
   const currentSurface = terrainSurface(room, player.spawn.x), nextSurface = terrainSurface(room, nextX);
   if (nextSurface < WORLD_HEIGHT - 1 && currentSurface < WORLD_HEIGHT - 1 && Math.abs(nextSurface - currentSurface) > MAX_WALK_SURFACE_DELTA) return { ok: false, error: 'terrain_too_steep' };
-  player.spawn = makeSpawn(room, nextX, dir); player.motion = null; if (markOutIfVoid(room, player)) evaluateImmediateFinish(room); return { ok: true, room };
+  if (nextSurface >= WORLD_HEIGHT - 1) killByVoid(room, player, Date.now(), from, nextX, dir, 'fall');
+  else { player.spawn = makeSpawn(room, nextX, dir); player.motion = null; }
+  return { ok: true, room };
 }
 export function jumpActivePlayer(socketId, direction) {
   const check = validateTurnAction(socketId); if (!check.ok) return check; const { room, player } = check; if ((room.match.jumpsRemaining ?? 0) <= 0) return { ok: false, error: 'no_jumps_remaining' };
   const dir = Number(direction) < 0 ? -1 : Number(direction) > 0 ? 1 : (player.spawn.facing || 1), origin = room.match.movementOriginX, minX = Math.max(40, origin - room.match.movementRadius), maxX = Math.min(WORLD_WIDTH - 40, origin + room.match.movementRadius), from = { ...player.spawn }, nextX = clamp(player.spawn.x + dir * JUMP_DISTANCE, minX, maxX);
   if (Math.abs(nextX - player.spawn.x) < 0.01) return { ok: false, error: 'movement_limit' };
-  const to = makeSpawn(room, nextX, dir), now = Date.now(); player.spawn = to; player.motion = { type: 'jump', startedAt: now, endsAt: now + JUMP_DURATION_MS, fromX: from.x, fromY: from.y, toX: to.x, toY: to.y, apex: JUMP_APEX }; room.match.jumpsRemaining -= 1;
-  if (to.y > WORLD_HEIGHT) { player.hp = 0; player.alive = false; player.spawn = { ...to, y: WORLD_HEIGHT + 120 }; player.motion.toY = WORLD_HEIGHT + 120; evaluateImmediateFinish(room, now); }
+  const surface = terrainSurface(room, nextX), now = Date.now(); room.match.jumpsRemaining -= 1;
+  if (surface >= WORLD_HEIGHT - 1) killByVoid(room, player, now, from, nextX, dir, 'jump');
+  else {
+    const to = makeSpawn(room, nextX, dir); player.spawn = to; player.motion = { type: 'jump', startedAt: now, endsAt: now + JUMP_DURATION_MS, fromX: from.x, fromY: from.y, toX: to.x, toY: to.y, apex: JUMP_APEX };
+  }
   return { ok: true, room };
 }
 export function setAim(socketId, angle, power) { const check = validateTurnAction(socketId); if (!check.ok) return check; const { room } = check; if (angle != null) room.match.aimAngle = clamp(Number(angle) || DEFAULT_ANGLE, MIN_ANGLE, MAX_ANGLE); if (power != null) room.match.aimPower = clamp(Number(power) || DEFAULT_POWER, MIN_POWER, MAX_POWER); return { ok: true, room }; }
@@ -305,7 +318,7 @@ function simulateProjectile(room, player, angle, power, now) {
       if (Math.hypot(x - target.spawn.x, y - (target.spawn.y - 10)) <= VEHICLE_HIT_RADIUS) { reason = 'player'; hitPlayerId = target.id; break; }
     }
     if (hitPlayerId) break;
-    const surface = terrainSurface(room, x); if (surface < WORLD_HEIGHT && t > 0.08 && y >= surface) { impactY = surface; reason = 'terrain'; break; }
+    const terrain = terrainSurface(room, x); if (terrain < WORLD_HEIGHT && t > 0.08 && y >= terrain) { impactY = terrain; reason = 'terrain'; break; }
   }
   const durationMs = Math.max(220, Math.round(impactT * 1000));
   return { id: `${room.code}-${room.match.turnNumber}-${now}`, ownerPlayerId: player.id, startedAt: now, impactAt: now + durationMs, resolveAt: now + durationMs + IMPACT_PAUSE_MS, durationMs, startX, startY, vx, vy, gravity: PROJECTILE_GRAVITY, windAccel, impactX: clamp(impactX, 0, WORLD_WIDTH), impactY, impactReason: reason, hitPlayerId, angle, power, resolutionApplied: false };
@@ -327,14 +340,25 @@ function applyImpactResolution(room, projectile, now) {
 
   const groundY = terrainSurface(room, projectile.impactX);
   if (groundY < WORLD_HEIGHT - 1) room.arena.craters.push({ id: projectile.id, x: projectile.impactX, radius: CRATER_RADIUS, depth: CRATER_DEPTH, createdAt: projectile.impactAt });
+  let latestFallEnd = 0;
   for (const player of room.players) {
     if (player.alive === false || !player.spawn) continue;
     const surface = terrainSurface(room, player.spawn.x), targetY = surface >= WORLD_HEIGHT - 1 ? WORLD_HEIGHT + 120 : surface - VEHICLE_GROUND_OFFSET;
     if (targetY <= player.spawn.y + 2) continue;
-    const from = { ...player.spawn }; player.spawn = { ...player.spawn, y: Math.round(targetY) }; player.motion = { type: 'fall', startedAt: now, endsAt: now + FALL_DURATION_MS, fromX: from.x, fromY: from.y, toX: player.spawn.x, toY: player.spawn.y, apex: 0 };
-    if (surface >= WORLD_HEIGHT - 1) { player.hp = 0; player.alive = false; }
+    const from = { ...player.spawn };
+    if (surface >= WORLD_HEIGHT - 1) {
+      killByVoid(room, player, now, from, player.spawn.x, player.spawn.facing || 1, 'fall');
+      latestFallEnd = Math.max(latestFallEnd, player.motion.endsAt);
+    } else {
+      player.spawn = { ...player.spawn, y: Math.round(targetY) };
+      player.motion = { type: 'fall', startedAt: now, endsAt: now + Math.min(FALL_DURATION_MS, 900), fromX: from.x, fromY: from.y, toX: player.spawn.x, toY: player.spawn.y, apex: 0 };
+    }
   }
   room.match.pendingResult = resultFor(room);
+  if (latestFallEnd) {
+    projectile.resolveAt = Math.max(projectile.resolveAt, latestFallEnd + VOID_FINISH_BUFFER_MS);
+    room.match.turnEndsAt = projectile.resolveAt;
+  }
   return true;
 }
 
