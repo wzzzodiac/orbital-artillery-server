@@ -36,6 +36,12 @@ const MAX_HP = 100;
 const EXPLOSION_RADIUS = 260;
 const EXPLOSION_MAX_DAMAGE = 45;
 const VEHICLE_HIT_RADIUS = 26;
+const KNOCKBACK_GRAVITY = 520;
+const KNOCKBACK_DT = 0.02;
+const KNOCKBACK_MAX_SECONDS = 2.4;
+const KNOCKBACK_MIN_STRENGTH = 0.10;
+const KNOCKBACK_MAX_SPEED = 520;
+const KNOCKBACK_LIFT_BIAS = 115;
 
 // EASY TERRAIN RENAMING: change ONLY the text on the right.
 const TERRAIN_LABELS = Object.freeze({
@@ -325,9 +331,77 @@ function simulateProjectile(room, player, angle, power, now) {
 }
 export function fireProjectile(socketId, now = Date.now()) { const check = validateTurnAction(socketId); if (!check.ok) return check; const { room, player } = check, projectile = simulateProjectile(room, player, room.match.aimAngle, room.match.aimPower, now); room.match.projectile = projectile; room.match.turnEndsAt = projectile.resolveAt; room.camera = { mode: 'projectile', targetPlayerId: player.id, projectileId: projectile.id }; return { ok: true, room }; }
 
+function applyKnockback(room, player, projectile, distance, now) {
+  if (projectile.hitPlayerId === player.id) return null;
+  const strength = clamp(1 - distance / EXPLOSION_RADIUS, 0, 1);
+  if (strength < KNOCKBACK_MIN_STRENGTH) return null;
+
+  const centerX = player.spawn.x, centerY = player.spawn.y - 10;
+  let dx = centerX - projectile.impactX, dy = centerY - projectile.impactY;
+  let length = Math.hypot(dx, dy);
+  if (length < 1) { dx = player.spawn.facing || 1; dy = -0.25; length = Math.hypot(dx, dy); }
+  const nx = dx / length, ny = dy / length;
+  const speed = (150 + (KNOCKBACK_MAX_SPEED - 150) * strength);
+  const vx = nx * speed;
+  const vy = ny * speed - KNOCKBACK_LIFT_BIAS * strength;
+  const from = { ...player.spawn };
+  let finalX = from.x, finalY = from.y, duration = 0.25, voided = false;
+
+  for (let t = KNOCKBACK_DT; t <= KNOCKBACK_MAX_SECONDS; t += KNOCKBACK_DT) {
+    const x = clamp(from.x + vx * t, 20, WORLD_WIDTH - 20);
+    const y = from.y + vy * t + 0.5 * KNOCKBACK_GRAVITY * t * t;
+    const verticalVelocity = vy + KNOCKBACK_GRAVITY * t;
+    const surface = terrainSurface(room, x);
+    finalX = x; finalY = y; duration = t;
+
+    if (surface >= WORLD_HEIGHT - 1) {
+      if (y >= WORLD_HEIGHT + 120) { finalY = WORLD_HEIGHT + 120; voided = true; break; }
+      continue;
+    }
+
+    const groundY = surface - VEHICLE_GROUND_OFFSET;
+    if (t > 0.08 && verticalVelocity >= 0 && y >= groundY) {
+      finalY = Math.round(groundY);
+      break;
+    }
+  }
+
+  if (!voided) {
+    const surface = terrainSurface(room, finalX);
+    if (surface >= WORLD_HEIGHT - 1) {
+      voided = true;
+      finalY = WORLD_HEIGHT + 120;
+      duration = Math.max(duration, 1.15);
+    } else {
+      finalY = Math.round(surface - VEHICLE_GROUND_OFFSET);
+    }
+  }
+
+  const endsAt = now + Math.max(260, Math.round(duration * 1000));
+  player.spawn = { x: Math.round(finalX), y: finalY, facing: vx < -1 ? -1 : vx > 1 ? 1 : (player.spawn.facing || 1) };
+  player.motion = {
+    type: voided ? 'knockbackVoid' : 'knockback',
+    startedAt: now,
+    endsAt,
+    fromX: from.x,
+    fromY: from.y,
+    toX: player.spawn.x,
+    toY: player.spawn.y,
+    vx,
+    vy,
+    gravity: KNOCKBACK_GRAVITY,
+    strength
+  };
+
+  if (voided) { player.hp = 0; player.alive = false; }
+  return { endsAt, voided, strength };
+}
+
 function applyImpactResolution(room, projectile, now) {
   if (!projectile || projectile.resolutionApplied || !['terrain', 'player'].includes(projectile.impactReason)) return false;
   projectile.resolutionApplied = true;
+  const affected = [];
+
   for (const player of room.players) {
     if (player.alive === false || !player.spawn) continue;
     const distance = Math.hypot(player.spawn.x - projectile.impactX, (player.spawn.y - 10) - projectile.impactY);
@@ -335,28 +409,38 @@ function applyImpactResolution(room, projectile, now) {
     let damage = Math.round(EXPLOSION_MAX_DAMAGE * (1 - distance / EXPLOSION_RADIUS));
     if (projectile.hitPlayerId === player.id) damage = Math.max(damage, EXPLOSION_MAX_DAMAGE);
     damage = clamp(damage, 1, EXPLOSION_MAX_DAMAGE); player.hp = Math.max(0, (player.hp ?? MAX_HP) - damage); player.lastDamage = { amount: damage, at: now, sourcePlayerId: projectile.ownerPlayerId };
+    affected.push({ player, distance });
     if (player.hp <= 0) player.alive = false;
   }
 
   const groundY = terrainSurface(room, projectile.impactX);
   if (groundY < WORLD_HEIGHT - 1) room.arena.craters.push({ id: projectile.id, x: projectile.impactX, radius: CRATER_RADIUS, depth: CRATER_DEPTH, createdAt: projectile.impactAt });
-  let latestFallEnd = 0;
-  for (const player of room.players) {
+
+  let latestMotionEnd = 0;
+  for (const { player, distance } of affected) {
     if (player.alive === false || !player.spawn) continue;
+    const knockback = applyKnockback(room, player, projectile, distance, now);
+    if (knockback) latestMotionEnd = Math.max(latestMotionEnd, knockback.endsAt);
+  }
+
+  for (const player of room.players) {
+    if (player.alive === false || !player.spawn || ['knockback', 'knockbackVoid'].includes(player.motion?.type)) continue;
     const surface = terrainSurface(room, player.spawn.x), targetY = surface >= WORLD_HEIGHT - 1 ? WORLD_HEIGHT + 120 : surface - VEHICLE_GROUND_OFFSET;
     if (targetY <= player.spawn.y + 2) continue;
     const from = { ...player.spawn };
     if (surface >= WORLD_HEIGHT - 1) {
       killByVoid(room, player, now, from, player.spawn.x, player.spawn.facing || 1, 'fall');
-      latestFallEnd = Math.max(latestFallEnd, player.motion.endsAt);
+      latestMotionEnd = Math.max(latestMotionEnd, player.motion.endsAt);
     } else {
       player.spawn = { ...player.spawn, y: Math.round(targetY) };
       player.motion = { type: 'fall', startedAt: now, endsAt: now + Math.min(FALL_DURATION_MS, 900), fromX: from.x, fromY: from.y, toX: player.spawn.x, toY: player.spawn.y, apex: 0 };
+      latestMotionEnd = Math.max(latestMotionEnd, player.motion.endsAt);
     }
   }
+
   room.match.pendingResult = resultFor(room);
-  if (latestFallEnd) {
-    projectile.resolveAt = Math.max(projectile.resolveAt, latestFallEnd + VOID_FINISH_BUFFER_MS);
+  if (latestMotionEnd) {
+    projectile.resolveAt = Math.max(projectile.resolveAt, latestMotionEnd + VOID_FINISH_BUFFER_MS);
     room.match.turnEndsAt = projectile.resolveAt;
   }
   return true;
