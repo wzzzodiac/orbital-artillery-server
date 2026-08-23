@@ -231,7 +231,7 @@ function finishMatch(room, result, now = Date.now()) {
 }
 function beginVoidResolution(room, player, now = Date.now(), motionEndsAt = now + FALL_DURATION_MS) {
   room.match.pendingResult = resultFor(room);
-  room.match.turnEndsAt = Math.max(room.match.turnEndsAt ?? 0, motionEndsAt + VOID_FINISH_BUFFER_MS);
+  room.match.turnEndsAt = motionEndsAt + VOID_FINISH_BUFFER_MS;
   room.camera = { mode: 'follow', targetPlayerId: player.id };
   return room;
 }
