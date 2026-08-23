@@ -142,6 +142,14 @@ function evenSpawnPositions(count) {
   const left = 360, right = WORLD_WIDTH - 360, step = (right - left) / (count - 1);
   return Array.from({ length: count }, (_, index) => Math.round(left + step * index));
 }
+function shuffled(values) {
+  const result = [...values];
+  for (let i = result.length - 1; i > 0; i -= 1) {
+    const j = randomInt(i + 1);
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result;
+}
 function previewArena(room) {
   return { id: `preview-${room.terrainPreset}`, terrainPreset: room.terrainPreset, terrainName: TERRAIN_LABELS[room.terrainPreset], craters: [], previewSpawns: evenSpawnPositions(room.players.length), worldWidth: WORLD_WIDTH, worldHeight: WORLD_HEIGHT, viewportWidth: VIEWPORT_WIDTH, viewportHeight: VIEWPORT_HEIGHT, unitsWide: 5, unitsHigh: 5, viewportUnitsWide: 1, viewportUnitsHigh: 1, seed: room.code, generatedAt: room.createdAt };
 }
@@ -217,6 +225,22 @@ function buildTurnOrder(room) {
   for (let i = 0; i < Math.max(first.length, second.length); i += 1) { if (first[i]) order.push(first[i].id); if (second[i]) order.push(second[i].id); }
   return order;
 }
+function chooseInitialPlayerId(room, order) {
+  if (order.length <= 1) return order[0] ?? null;
+  const hostWeight = 0.4 / (order.length - 1);
+  const otherWeight = (1 - hostWeight) / (order.length - 1);
+  let roll = randomInt(1_000_000) / 1_000_000;
+  for (const id of order) {
+    const weight = id === room.hostId ? hostWeight : otherWeight;
+    if (roll < weight) return id;
+    roll -= weight;
+  }
+  return order[order.length - 1];
+}
+function rotateOrderTo(order, starterId) {
+  const index = order.indexOf(starterId);
+  return index <= 0 ? [...order] : [...order.slice(index), ...order.slice(0, index)];
+}
 function createWind() { const direction = randomInt(2) === 0 ? -1 : 1, strength = randomInt(5, 61); return { direction: direction < 0 ? 'left' : 'right', strength, signed: strength * direction }; }
 function activePlayer(room) { return room.players.find(player => player.id === room.match?.activePlayerId) ?? null; }
 
@@ -261,9 +285,12 @@ function beginTurn(room, requestedIndex, now = Date.now()) {
 function assignArena(room) {
   room.arena = { id: `phase5b-${room.terrainPreset}-01`, terrainPreset: room.terrainPreset, terrainName: TERRAIN_LABELS[room.terrainPreset], craters: [], previewSpawns: [], worldWidth: WORLD_WIDTH, worldHeight: WORLD_HEIGHT, viewportWidth: VIEWPORT_WIDTH, viewportHeight: VIEWPORT_HEIGHT, unitsWide: 5, unitsHigh: 5, viewportUnitsWide: 1, viewportUnitsHigh: 1, seed: room.code, generatedAt: Date.now() };
   for (const player of room.players) { player.alive = true; player.hp = MAX_HP; player.motion = null; player.lastDamage = null; }
-  const positions = evenSpawnPositions(room.players.length);
+  const positions = shuffled(evenSpawnPositions(room.players.length));
   room.players.forEach((player, index) => { const preferred = positions[index], x = safeSpawnX(room, preferred); player.spawn = makeSpawn(room, x, x < WORLD_WIDTH / 2 ? 1 : -1); });
-  const now = Date.now(), turnOrder = buildTurnOrder(room);
+  const now = Date.now();
+  const baseOrder = buildTurnOrder(room);
+  const initialPlayerId = chooseInitialPlayerId(room, baseOrder);
+  const turnOrder = rotateOrderTo(baseOrder, initialPlayerId);
   room.camera = { mode: 'follow', targetPlayerId: turnOrder[0] ?? room.players[0]?.id ?? null };
   room.match = { countdownStartedAt: now, startAt: now + COUNTDOWN_MS, countdownMs: COUNTDOWN_MS, initialPlayerId: turnOrder[0] ?? room.players[0]?.id ?? null, turnDurationMs: TURN_DURATION_MS, turnOrder, turnIndex: -1, turnNumber: 0, activePlayerId: null, turnStartedAt: null, turnEndsAt: null, wind: null, movementOriginX: null, movementRadius: MOVE_RADIUS, jumpsRemaining: JUMPS_PER_TURN, aimAngle: DEFAULT_ANGLE, aimPower: DEFAULT_POWER, projectile: null, shotResolvedAt: null, pendingResult: null, result: null, finishedAt: null };
 }
