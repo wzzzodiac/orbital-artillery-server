@@ -33,7 +33,7 @@ const CRATER_DEPTH = 165;
 const FALL_DURATION_MS = 760;
 const MAX_HP = 100;
 const EXPLOSION_RADIUS = 260;
-const EXPLOSION_MAX_DAMAGE = 85;
+const EXPLOSION_MAX_DAMAGE = 45;
 const VEHICLE_HIT_RADIUS = 26;
 
 // EASY TERRAIN RENAMING: change ONLY the text on the right.
