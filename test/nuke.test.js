@@ -55,6 +55,23 @@ test('Nuke Laser consumes item and creates a three-second catastrophic beam sequ
   assert.ok(Math.abs(q.nukeBeam.by-q.nukeBeam.ay) <= 640, 'beam should stay diagonal across the terrain band instead of becoming near-vertical');
 });
 
+test('Nuke Laser terrain destruction only occurs where the diagonal beam intersects the surface', () => {
+  const room = makeStartedRoom();
+  const activeId = room.match.activePlayerId;
+  equipNuke(room, activeId);
+  const result = fireProjectile6D(activeId);
+  assert.equal(result.ok, true);
+  const q = room.match.projectile;
+  const now = Date.now();
+  const before = room.arena.craters.length;
+  q.nukeBeam = { ax:q.targetX-900, ay:200, bx:q.targetX+900, by:260, halfWidth:115 };
+  q.beamAt = now;
+  q.beamUntil = now + 10;
+  q.resolveAt = now + 100;
+  advanceTurnIfDue6D(room.code, now);
+  assert.equal(room.arena.craters.length, before, 'terrain far below a displaced beam must not be erased');
+});
+
 test('Nuke Laser deals 20 direct damage, Shield halves it, and applies no knockback', () => {
   const room = makeStartedRoom(['a', 'b', 'c']);
   const activeId = room.match.activePlayerId;
