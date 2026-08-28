@@ -9,21 +9,22 @@ import {
   joinRoom,
   removePlayer,
   roomStore,
-  setAim,
   setGameMode,
   setPlayerReady,
   setPlayerTeam,
-  setTerrainPreset,
   startRoom
 } from './rooms.js';
 import {
-  advanceTurnIfDue6E,
-  fireProjectile6E,
-  jumpActivePlayer6E,
-  moveActivePlayer6E,
-  publicRoomState6E,
-  selectItem6E
-} from './phase6e.js';
+  advanceTurnIfDue7A1,
+  fireProjectile7A1,
+  jumpActivePlayer7A1,
+  moveActivePlayer7A1,
+  publicRoomState7A1,
+  rematchRoom7A1,
+  selectItem7A1,
+  setAim7A1,
+  setTerrain7A1
+} from './phase7a1.js';
 import {
   ensureAfkVoteState,
   registerActiveTurnActivity,
@@ -38,12 +39,12 @@ setInterval(() => { const cutoff = Date.now() - 120_000; for (const [ip, window]
 
 let io;
 const httpServer = createServer((req, res) => {
-  if (req.url === '/health') { res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' }); res.end(JSON.stringify({ ok: true, service: 'orbital-artillery-server', phase: '6E', rooms: roomStore.size, sockets: io?.engine?.clientsCount ?? 0 })); return; }
+  if (req.url === '/health') { res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' }); res.end(JSON.stringify({ ok: true, service: 'orbital-artillery-server', phase: '7A.1', rooms: roomStore.size, sockets: io?.engine?.clientsCount ?? 0 })); return; }
   res.writeHead(404, { 'content-type': 'application/json; charset=utf-8' }); res.end(JSON.stringify({ error: 'not_found' }));
 });
 
 io = new SocketIOServer(httpServer, { cors: { origin: CONFIG.clientOrigin, methods: ['GET', 'POST'] }, allowRequest: (req, callback) => { const ip = clientIpFromRequest(req); if (io.engine.clientsCount >= CONFIG.maxConcurrentSockets) return callback('server_capacity_reached', false); if (!allowConnectionAttempt(ip)) return callback('connection_rate_limited', false); callback(null, true); } });
-function publicState(room) { ensureAfkVoteState(room); return publicRoomState6E(room); }
+function publicState(room) { ensureAfkVoteState(room); return publicRoomState7A1(room); }
 function emitRoomState(room) { io.to(room.code).emit('room_state', publicState(room)); }
 
 setInterval(() => {
@@ -52,7 +53,7 @@ setInterval(() => {
     let changed = null;
     if (room.status === 'countdown' && now >= room.match?.startAt) changed = activateRoom(room.code, now);
     else if (room.status === 'started') {
-      for (let catchUp = 0; catchUp < 8; catchUp += 1) { const advanced = advanceTurnIfDue6E(room.code, now); if (!advanced) break; changed = advanced; }
+      for (let catchUp = 0; catchUp < 8; catchUp += 1) { const advanced = advanceTurnIfDue7A1(room.code, now); if (!advanced) break; changed = advanced; }
     }
     if (changed) emitRoomState(changed);
   }
@@ -74,20 +75,21 @@ io.on('connection', socket => {
   socket.on('create_room', (payload, reply = () => {}) => { if (!allowRoomAction()) return reply({ ok: false, error: 'room_action_rate_limited' }); if (findRoomBySocket(socket.id)) return reply({ ok: false, error: 'already_in_room' }); const name = normalizePlayerName(payload?.name); if (!name) return reply({ ok: false, error: 'invalid_name' }); const result = createRoom(socket.id, name); if (!result.ok) return reply(result); socket.join(result.room.code); reply({ ok: true, room: publicState(result.room), playerId: socket.id }); emitRoomState(result.room); });
   socket.on('join_room', (payload, reply = () => {}) => { if (!allowRoomAction()) return reply({ ok: false, error: 'room_action_rate_limited' }); if (findRoomBySocket(socket.id)) return reply({ ok: false, error: 'already_in_room' }); const name = normalizePlayerName(payload?.name), code = String(payload?.code ?? '').trim().toUpperCase(); if (!name) return reply({ ok: false, error: 'invalid_name' }); if (!isValidRoomCode(code)) return reply({ ok: false, error: 'invalid_room_code' }); const result = joinRoom(code, socket.id, name); if (!result.ok) return reply(result); socket.join(code); reply({ ok: true, room: publicState(result.room), playerId: socket.id }); emitRoomState(result.room); });
   socket.on('set_mode', (payload, reply = () => {}) => { if (!allowRoomAction()) return reply({ ok: false, error: 'room_action_rate_limited' }); replyMutation(setGameMode(socket.id, String(payload?.mode ?? '').toLowerCase()), reply); });
-  socket.on('set_terrain', (payload, reply = () => {}) => { if (!allowRoomAction()) return reply({ ok: false, error: 'room_action_rate_limited' }); replyMutation(setTerrainPreset(socket.id, String(payload?.terrain ?? '').toLowerCase()), reply); });
+  socket.on('set_terrain', (payload, reply = () => {}) => { if (!allowRoomAction()) return reply({ ok: false, error: 'room_action_rate_limited' }); replyMutation(setTerrain7A1(socket.id, String(payload?.terrain ?? '').toLowerCase()), reply); });
   socket.on('set_ready', (payload, reply = () => {}) => { if (!allowRoomAction()) return reply({ ok: false, error: 'room_action_rate_limited' }); replyMutation(setPlayerReady(socket.id, payload?.ready), reply); });
   socket.on('set_team', (payload, reply = () => {}) => { if (!allowRoomAction()) return reply({ ok: false, error: 'room_action_rate_limited' }); replyMutation(setPlayerTeam(socket.id, String(payload?.team ?? '').toUpperCase()), reply); });
   socket.on('start_game', (_payload, reply = () => {}) => { if (!allowRoomAction()) return reply({ ok: false, error: 'room_action_rate_limited' }); replyMutation(startRoom(socket.id), reply); });
-  socket.on('move_player', (payload, reply = () => {}) => replyTurnAction(moveActivePlayer6E(socket.id, payload?.direction), reply));
-  socket.on('jump_player', (payload, reply = () => {}) => replyTurnAction(jumpActivePlayer6E(socket.id, payload?.direction), reply));
-  socket.on('set_aim', (payload, reply = () => {}) => replyTurnAction(setAim(socket.id, payload?.angle, payload?.power), reply));
-  socket.on('select_item', (payload, reply = () => {}) => replyTurnAction(selectItem6E(socket.id, payload?.slot), reply));
-  socket.on('fire_projectile', (_payload, reply = () => {}) => replyTurnAction(fireProjectile6E(socket.id), reply));
+  socket.on('rematch_game', (payload, reply = () => {}) => { if (!allowRoomAction()) return reply({ ok: false, error: 'room_action_rate_limited' }); replyMutation(rematchRoom7A1(socket.id, { randomMap: Boolean(payload?.randomMap) }), reply); });
+  socket.on('move_player', (payload, reply = () => {}) => replyTurnAction(moveActivePlayer7A1(socket.id, payload?.direction), reply));
+  socket.on('jump_player', (payload, reply = () => {}) => replyTurnAction(jumpActivePlayer7A1(socket.id, payload?.direction), reply));
+  socket.on('set_aim', (payload, reply = () => {}) => replyTurnAction(setAim7A1(socket.id, payload?.angle, payload?.power), reply));
+  socket.on('select_item', (payload, reply = () => {}) => replyTurnAction(selectItem7A1(socket.id, payload?.slot), reply));
+  socket.on('fire_projectile', (_payload, reply = () => {}) => replyTurnAction(fireProjectile7A1(socket.id), reply));
   socket.on('toggle_afk_skip_vote', (_payload, reply = () => {}) => {
     const result = toggleAfkSkipVote(socket.id);
     if (!result.ok) return reply(result);
     let room = result.room;
-    if (result.skipped) room = advanceTurnIfDue6E(room.code, Date.now()) ?? room;
+    if (result.skipped) room = advanceTurnIfDue7A1(room.code, Date.now()) ?? room;
     reply({ ok: true, room: publicState(room), skipped: result.skipped, voted: result.voted });
     emitRoomState(room);
   });
