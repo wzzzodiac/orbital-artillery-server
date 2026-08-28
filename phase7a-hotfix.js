@@ -18,10 +18,17 @@ const WORLD_WIDTH = 5000;
 const WORLD_HEIGHT = 5000;
 const GROUND_OFFSET = 8;
 const JUMP_APEX = 150;
-const MIN_VISIBLE_PROJECTILE_MS = 1000;
-const CLUSTER_CHILD_DELAY_MS = 650;
-const CLUSTER_CHILD_STAGGER_MS = 140;
+const MAX_VAULT_APEX = 850;
+const JUMP_CLEARANCE = 16;
+const BASIC_MIN_VISIBLE_MS = 3000;
+const BOX_WEAPON_MIN_VISIBLE_MS = 4000;
+const CLUSTER_CHILD_DELAY_MS = 1000;
+const CLUSTER_CHILD_STAGGER_MS = 200;
+const NUKE_WARNING_MS = 5000;
+const NUKE_BEAM_MS = 5000;
+const NUKE_RESOLVE_BUFFER_MS = 1500;
 
+const BOX_PROJECTILE_TYPES = new Set(['heavy','triple','cluster','nuke']);
 const HOLES = {
   rolling: [], terraces: [[2430,2550]], twinpeaks: [[2390,2510]],
   basin: [[1140,1240],[3760,3860]], brokenridge: [[1010,1140],[2410,2550],[3860,3980]],
@@ -36,15 +43,36 @@ function surface(room,x){const px=clamp(x,0,WORLD_WIDTH),p=room.terrainPreset||'
 function inventorySnapshot(room, player){return {inventory:Array.isArray(player.inventory)?player.inventory.map(x=>x?{...x}:null):null,lastPickup:player.lastPickup?{...player.lastPickup}:null,pickups:Array.isArray(room.pickups)?room.pickups.map(x=>({...x})):null};}
 function restoreInventorySnapshot(room, player, snapshot){if(snapshot.inventory)player.inventory=snapshot.inventory;if(snapshot.pickups)room.pickups=snapshot.pickups;player.lastPickup=snapshot.lastPickup;}
 
+function requiredVaultApex(room, from, motion){
+  const dx=motion.toX-from.x;
+  let required=Math.max(JUMP_APEX,from.y-motion.toY+70);
+  for(let i=3;i<=33;i+=1){
+    const t=i/36;
+    const s=Math.sin(Math.PI*t);
+    if(s<0.12)continue;
+    const x=from.x+dx*t;
+    const ground=surface(room,x);
+    if(ground>=WORLD_HEIGHT-1)continue;
+    const base=from.y+(motion.toY-from.y)*t;
+    const limit=ground-GROUND_OFFSET-JUMP_CLEARANCE;
+    required=Math.max(required,(base-limit)/s);
+  }
+  return Math.ceil(required);
+}
+
 function stopJumpAtTerrain(room, player, from, originalMotion, inventoryBefore){
   if(!originalMotion||originalMotion.type!=='jump'||originalMotion.toY>WORLD_HEIGHT)return false;
-  const toX=originalMotion.toX,toY=originalMotion.toY,dir=Math.sign(toX-from.x)||1,steps=36;
+  const neededApex=requiredVaultApex(room,from,originalMotion);
+  const apex=Math.min(MAX_VAULT_APEX,Math.max(originalMotion.apex||JUMP_APEX,neededApex));
+  originalMotion.apex=apex;
+  player.motion.apex=apex;
+  const toX=originalMotion.toX,toY=originalMotion.toY,dir=Math.sign(toX-from.x)||1,steps=48;
   let previousX=from.x;
   for(let i=1;i<steps;i+=1){
     const t=i/steps;
     const x=from.x+(toX-from.x)*t;
     const base=from.y+(toY-from.y)*t;
-    const y=base-Math.sin(Math.PI*t)*(originalMotion.apex||JUMP_APEX);
+    const y=base-Math.sin(Math.PI*t)*apex;
     const ground=surface(room,x);
     const limit=ground-GROUND_OFFSET;
     if(ground<WORLD_HEIGHT-1&&y>limit-1){
@@ -56,7 +84,7 @@ function stopJumpAtTerrain(room, player, from, originalMotion, inventoryBefore){
       const fraction=Math.max(.18,Math.abs(safeX-from.x)/Math.max(1,Math.abs(toX-from.x)));
       const duration=Math.max(220,Math.round((originalMotion.endsAt-originalMotion.startedAt)*fraction));
       player.spawn={x:safeX,y:safeY,facing:dir};
-      player.motion={type:'jump',startedAt:now,endsAt:now+duration,fromX:from.x,fromY:from.y,toX:safeX,toY:safeY,apex:Math.min(originalMotion.apex||JUMP_APEX,Math.max(45,(originalMotion.apex||JUMP_APEX)*fraction))};
+      player.motion={type:'jump',startedAt:now,endsAt:now+duration,fromX:from.x,fromY:from.y,toX:safeX,toY:safeY,apex:Math.min(apex,Math.max(45,apex*fraction))};
       restoreInventorySnapshot(room,player,inventoryBefore);
       return true;
     }
@@ -65,17 +93,17 @@ function stopJumpAtTerrain(room, player, from, originalMotion, inventoryBefore){
   return false;
 }
 
-function slowBallistic(v){
+function slowBallistic(v,minVisibleMs){
   if(!v||!Number.isFinite(v.startedAt)||!Number.isFinite(v.impactAt))return 0;
   const oldDuration=Math.max(1,v.impactAt-v.startedAt);
-  if(oldDuration>=MIN_VISIBLE_PROJECTILE_MS)return 0;
-  const scale=MIN_VISIBLE_PROJECTILE_MS/oldDuration;
+  if(oldDuration>=minVisibleMs)return 0;
+  const scale=minVisibleMs/oldDuration;
   v.vx=Number(v.vx||0)/scale;
   v.vy=Number(v.vy||0)/scale;
   v.gravity=Number(v.gravity||0)/(scale*scale);
   v.windAccel=Number(v.windAccel||0)/(scale*scale);
-  v.durationMs=MIN_VISIBLE_PROJECTILE_MS;
-  v.impactAt=v.startedAt+MIN_VISIBLE_PROJECTILE_MS;
+  v.durationMs=minVisibleMs;
+  v.impactAt=v.startedAt+minVisibleMs;
   return v.impactAt-(v.startedAt+oldDuration);
 }
 
@@ -85,10 +113,10 @@ function paceProjectile(room){
   q.visualPacing7A=true;
   const type=q.weaponType||'basic';
   if(type==='airstrike')return;
-  const oldImpact=q.impactAt;
-  const delta=slowBallistic(q);
+  const minVisibleMs=BOX_PROJECTILE_TYPES.has(type)?BOX_WEAPON_MIN_VISIBLE_MS:BASIC_MIN_VISIBLE_MS;
+  slowBallistic(q,minVisibleMs);
   if(type==='triple'&&Array.isArray(q.volley)){
-    for(const v of q.volley)slowBallistic(v);
+    for(const v of q.volley)slowBallistic(v,BOX_WEAPON_MIN_VISIBLE_MS);
     q.specialResolveAt=Math.max(...q.volley.map(v=>v.impactAt));
     q.resolveAt=q.specialResolveAt+900;
   }else if(type==='cluster'){
@@ -96,23 +124,18 @@ function paceProjectile(room){
     q.specialResolveAt=q.clusterImpacts?.length?Math.max(...q.clusterImpacts.map(v=>v.impactAt)):q.impactAt;
     q.resolveAt=q.specialResolveAt+900;
   }else if(type==='nuke'){
-    const shift=q.impactAt-oldImpact;
-    if(shift){
-      if(Number.isFinite(q.targetLockedAt))q.targetLockedAt+=shift;
-      if(Number.isFinite(q.warningUntil))q.warningUntil+=shift;
-      if(Number.isFinite(q.beamAt))q.beamAt+=shift;
-      if(Number.isFinite(q.beamUntil))q.beamUntil+=shift;
-      if(Number.isFinite(q.resolveAt))q.resolveAt+=shift;
-    }
+    q.targetLockedAt=q.impactAt;
+    q.warningUntil=q.impactAt+NUKE_WARNING_MS;
+    q.beamAt=q.warningUntil;
+    q.beamUntil=q.beamAt+NUKE_BEAM_MS;
+    q.resolveAt=q.beamUntil+NUKE_RESOLVE_BUFFER_MS;
   }else q.resolveAt=q.impactAt+900;
-  if(type!=='nuke'&&delta&&Number.isFinite(q.resolveAt)&&q.resolveAt<q.impactAt+1)q.resolveAt=q.impactAt+900;
   if(Number.isFinite(q.resolveAt))room.match.turnEndsAt=q.resolveAt;
 }
 
 export function publicRoomState7AHotfix(room){
   const state=basePublic(room);
-  state.players=state.players.map(pp=>({...pp,connected:room.players.find(p=>p.id===pp.id)?.connected!==false}));
-  state.qaHardening={jumpArcCollision:true,disconnectDoesNotAwardVictory:true,minProjectileFlightMs:MIN_VISIBLE_PROJECTILE_MS,clusterChildDelayMs:CLUSTER_CHILD_DELAY_MS};
+  state.qaHardening={jumpArcCollision:true,dynamicJumpVault:true,disconnectRemovesPlayer:true,basicMinProjectileFlightMs:BASIC_MIN_VISIBLE_MS,boxWeaponMinProjectileFlightMs:BOX_WEAPON_MIN_VISIBLE_MS,clusterChildDelayMs:CLUSTER_CHILD_DELAY_MS,nukeWarningMs:NUKE_WARNING_MS,nukeBeamMs:NUKE_BEAM_MS};
   return state;
 }
 export function advanceTurnIfDue7AHotfix(code,now=Date.now()){return baseAdvance(code,now);}
@@ -129,35 +152,7 @@ export function setAim7AHotfix(id,a,p){return baseAim(id,a,p);}
 export function selectItem7AHotfix(id,s){return baseSelect(id,s);}
 export function setTerrain7AHotfix(id,t){return baseTerrain(id,t);}
 export function fireProjectile7AHotfix(id){const result=baseFire(id);if(result.ok)paceProjectile(result.room);return result;}
+export function disconnectPlayer7AHotfix(socketId){return removePlayerBase(socketId);}
+export function rematchRoom7AHotfix(id,options={}){return baseRematch(id,options);}
 
-export function disconnectPlayer7AHotfix(socketId){
-  const room=findRoomBySocket(socketId);
-  if(!room)return null;
-  if(!['started','countdown'].includes(room.status))return removePlayerBase(socketId);
-  const player=room.players.find(p=>p.id===socketId);
-  if(!player)return null;
-  player.connected=false;
-  const order=room.match?.turnOrder??[];
-  const removedIndex=order.indexOf(socketId);
-  const wasActive=room.match?.activePlayerId===socketId;
-  if(removedIndex>=0){
-    order.splice(removedIndex,1);
-    if(room.match.turnIndex>removedIndex)room.match.turnIndex-=1;
-    else if(room.match.turnIndex>=order.length)room.match.turnIndex=Math.max(0,order.length-1);
-  }
-  if(room.hostId===socketId){const replacement=room.players.find(p=>p.id!==socketId&&p.connected!==false);if(replacement)room.hostId=replacement.id;}
-  if(wasActive&&!room.match?.projectile){room.match.activePlayerId=null;room.match.turnEndsAt=Date.now();}
-  return {deleted:false,roomCode:room.code,room,disconnected:true};
-}
-
-export function rematchRoom7AHotfix(id,options={}){
-  const room=findRoomBySocket(id);
-  if(!room)return{ok:false,error:'not_in_room'};
-  if(room.hostId!==id)return{ok:false,error:'host_only'};
-  room.players=room.players.filter(p=>p.connected!==false);
-  if(room.players.length<2)return{ok:false,error:'not_enough_players'};
-  for(const p of room.players)p.connected=true;
-  return baseRematch(id,options);
-}
-
-export const phase7aHotfixTestHooks=Object.freeze({surface,paceProjectile,stopJumpAtTerrain});
+export const phase7aHotfixTestHooks=Object.freeze({surface,paceProjectile,stopJumpAtTerrain,requiredVaultApex});
