@@ -7,8 +7,8 @@ import {
   disconnectPlayer7AHotfix,
   fireProjectile7AHotfix,
   jumpActivePlayer7AHotfix,
-  phase7aHotfixTestHooks,
-  publicRoomState7AHotfix
+  moveActivePlayer7AHotfix,
+  phase7aHotfixTestHooks
 } from '../phase7a-hotfix.js';
 
 function started(ids=['a','b'], terrain='rolling'){
@@ -25,20 +25,28 @@ function started(ids=['a','b'], terrain='rolling'){
   return getRoom(room.code);
 }
 
-test('jump arc cannot phase through a tall terrain step',()=>{
+function giveSpecial(room,player,type,label=type.toUpperCase()){
+  player.inventory=[{type,label},null];
+  player.selectedItemSlot=2;
+  player.motion=null;
+  room.match.projectile=null;
+}
+
+test('jump vaults onto a high terrace without phasing through its side',()=>{
   const room=started(['a','b'],'terraces');
   const active=room.players.find(p=>p.id===room.match.activePlayerId);
-  active.spawn={x:250,y:Math.round(3520+Math.sin(250/560)*100-8),facing:1};
+  const fromX=250,landingX=430;
+  active.spawn={x:fromX,y:Math.round(phase7aHotfixTestHooks.surface(room,fromX)-8),facing:1};
   active.motion=null;
   active.lastFreeJumpAt=Date.now()-1000;
-  const nominalX=430;
   const r=jumpActivePlayer7AHotfix(active.id,1);
   assert.equal(r.ok,true);
-  assert.ok(active.spawn.x<nominalX,`expected collision before ${nominalX}, got ${active.spawn.x}`);
-  assert.ok(active.motion.toX<nominalX);
+  assert.equal(Math.round(active.spawn.x),landingX);
+  assert.equal(Math.round(active.spawn.y),Math.round(phase7aHotfixTestHooks.surface(room,landingX)-8));
+  assert.ok(active.motion.apex>150,`expected dynamic vault apex, got ${active.motion.apex}`);
 });
 
-test('short projectile flights are stretched to at least one visible second without moving the impact point',()=>{
+test('basic projectile has at least three seconds of visible flight',()=>{
   const room=started(['a','b']);
   const active=room.players.find(p=>p.id===room.match.activePlayerId);
   active.spawn={x:1000,y:phase7aHotfixTestHooks.surface(room,1000)-8,facing:1};
@@ -48,8 +56,34 @@ test('short projectile flights are stretched to at least one visible second with
   const r=fireProjectile7AHotfix(active.id);
   assert.equal(r.ok,true);
   const q=room.match.projectile;
-  assert.ok(q.impactAt-q.startedAt>=1000);
-  assert.ok(q.durationMs>=1000);
+  assert.ok(q.impactAt-q.startedAt>=3000);
+  assert.ok(q.durationMs>=3000);
+  assert.equal(room.match.turnEndsAt,q.resolveAt);
+});
+
+test('box projectile weapons have at least four seconds of visible flight',()=>{
+  const room=started(['a','b']);
+  const active=room.players.find(p=>p.id===room.match.activePlayerId);
+  giveSpecial(room,active,'heavy','HEAVY BOMB');
+  const r=fireProjectile7AHotfix(active.id);
+  assert.equal(r.ok,true);
+  const q=room.match.projectile;
+  assert.equal(q.weaponType,'heavy');
+  assert.ok(q.impactAt-q.startedAt>=4000);
+  assert.ok(q.durationMs>=4000);
+});
+
+test('nuke uses four-second designator then five-second warning and five-second beam',()=>{
+  const room=started(['a','b']);
+  const active=room.players.find(p=>p.id===room.match.activePlayerId);
+  giveSpecial(room,active,'nuke','NUKE LASER');
+  const r=fireProjectile7AHotfix(active.id);
+  assert.equal(r.ok,true);
+  const q=room.match.projectile;
+  assert.equal(q.weaponType,'nuke');
+  assert.ok(q.impactAt-q.startedAt>=4000);
+  assert.equal(q.beamAt-q.targetLockedAt,5000);
+  assert.equal(q.beamUntil-q.beamAt,5000);
   assert.equal(room.match.turnEndsAt,q.resolveAt);
 });
 
@@ -64,29 +98,42 @@ test('repeated two-player turn timeouts never create a winner while both players
   }
 });
 
-test('disconnect during a live survival match does not award a victory',()=>{
+test('two-player disconnect removes the tank and awards victory to the remaining player',()=>{
   const room=started(['a','b']);
-  const nonActive=room.players.find(p=>p.id!==room.match.activePlayerId);
-  const r=disconnectPlayer7AHotfix(nonActive.id);
-  assert.equal(r.disconnected,true);
-  assert.equal(room.status,'started');
-  assert.equal(room.match.result,null);
-  assert.equal(room.players.length,2);
-  assert.equal(nonActive.alive,true);
-  assert.equal(nonActive.connected,false);
-  const state=publicRoomState7AHotfix(room);
-  assert.equal(state.players.find(p=>p.id===nonActive.id).connected,false);
+  const leaving=room.players.find(p=>p.id!==room.match.activePlayerId);
+  const survivor=room.players.find(p=>p.id!==leaving.id);
+  const r=disconnectPlayer7AHotfix(leaving.id);
+  assert.ok(r?.room);
+  assert.equal(room.players.length,1);
+  assert.equal(room.players[0].id,survivor.id);
+  assert.equal(room.status,'finished');
+  assert.equal(room.match.result.winnerPlayerId,survivor.id);
 });
 
-test('disconnecting the active player removes only their turn, not their life or the match',()=>{
-  const room=started(['a','b']);
-  const activeId=room.match.activePlayerId;
-  const active=room.players.find(p=>p.id===activeId);
-  const r=disconnectPlayer7AHotfix(activeId);
-  assert.equal(r.disconnected,true);
+test('three-player active disconnect removes tank and immediately hands a usable turn to a remaining player',()=>{
+  const room=started(['a','b','c']);
+  const leavingId=room.match.activePlayerId;
+  const r=disconnectPlayer7AHotfix(leavingId);
+  assert.ok(r?.room);
+  assert.equal(room.players.length,2);
+  assert.equal(room.players.some(p=>p.id===leavingId),false);
   assert.equal(room.status,'started');
-  assert.equal(active.alive,true);
-  assert.equal(active.connected,false);
   assert.equal(room.match.result,null);
-  assert.equal(room.match.turnOrder.includes(activeId),false);
+  assert.ok(room.match.activePlayerId);
+  assert.equal(room.players.some(p=>p.id===room.match.activePlayerId),true);
+  const before=room.players.find(p=>p.id===room.match.activePlayerId).spawn.x;
+  const moved=moveActivePlayer7AHotfix(room.match.activePlayerId,1);
+  assert.equal(moved.ok,true);
+  assert.notEqual(room.players.find(p=>p.id===room.match.activePlayerId).spawn.x,before);
+});
+
+test('three-player non-active disconnect preserves the current active turn',()=>{
+  const room=started(['a','b','c']);
+  const activeId=room.match.activePlayerId;
+  const leaving=room.players.find(p=>p.id!==activeId);
+  disconnectPlayer7AHotfix(leaving.id);
+  assert.equal(room.players.length,2);
+  assert.equal(room.status,'started');
+  assert.equal(room.match.activePlayerId,activeId);
+  assert.equal(room.match.result,null);
 });
