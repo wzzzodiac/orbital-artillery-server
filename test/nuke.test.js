@@ -166,6 +166,23 @@ test('Phase 6D jump ignores the old two-jump quota and exposes free-movement rul
   assert.equal(state.match.jumpsRemaining,null);
 });
 
+test('free jump into void preserves long fall timing instead of using the 500 ms normal-jump animation', () => {
+  const room = makeStartedRoom();
+  const activeId = room.match.activePlayerId;
+  const player = room.players.find(entry => entry.id === activeId);
+  room.terrainPreset='terraces';
+  room.arena.terrainPreset='terraces';
+  player.spawn={x:2350,y:3240,facing:1};
+  player.motion=null;
+  player.lastFreeJumpAt=0;
+  const jumped=jumpActivePlayer6D(activeId,1);
+  assert.equal(jumped.ok,true);
+  assert.equal(player.alive,false);
+  assert.equal(player.motion?.type,'jump');
+  assert.ok(Number(player.motion?.toY)>5000);
+  assert.ok(player.motion.endsAt-player.motion.startedAt>=2000,'void jump must retain the long fall/death motion');
+});
+
 test('invalid spectator traversal does not mutate shared Phase 6D movement state', () => {
   const room = makeStartedRoom(['a','b','c']);
   const activeId = room.match.activePlayerId;
