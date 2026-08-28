@@ -23,7 +23,7 @@ import {
   moveActivePlayer6A,
   publicRoomState6A,
   selectItem6A
-} from './phase6a.js';
+} from './phase6c.js';
 import {
   ensureAfkVoteState,
   registerActiveTurnActivity,
@@ -38,7 +38,7 @@ setInterval(() => { const cutoff = Date.now() - 120_000; for (const [ip, window]
 
 let io;
 const httpServer = createServer((req, res) => {
-  if (req.url === '/health') { res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' }); res.end(JSON.stringify({ ok: true, service: 'orbital-artillery-server', phase: '6B-AFK', rooms: roomStore.size, sockets: io?.engine?.clientsCount ?? 0 })); return; }
+  if (req.url === '/health') { res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' }); res.end(JSON.stringify({ ok: true, service: 'orbital-artillery-server', phase: '6C.1', rooms: roomStore.size, sockets: io?.engine?.clientsCount ?? 0 })); return; }
   res.writeHead(404, { 'content-type': 'application/json; charset=utf-8' }); res.end(JSON.stringify({ error: 'not_found' }));
 });
 
