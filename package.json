@@ -7,7 +7,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "check": "node --check server.js && node --check rooms.js && node --check phase6a.js && node --check phase6c.js && node --check afk-vote.js && node --check game.js && node --check turns.js && node --check physics.js && node --check terrain.js && node --check validation.js && node --check config.js && node --test test/*.test.js"
+    "check": "node --check server.js && node --check rooms.js && node --check phase6a.js && node --check phase6c.js && node --check phase6d.js && node --check afk-vote.js && node --check game.js && node --check turns.js && node --check physics.js && node --check terrain.js && node --check validation.js && node --check config.js && node --test test/*.test.js"
   },
   "engines": {
     "node": ">=20"
