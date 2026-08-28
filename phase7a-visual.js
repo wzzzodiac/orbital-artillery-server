@@ -18,7 +18,7 @@ const WORLD_HEIGHT=5000;
 const GROUND_OFFSET=8;
 const AIR_STRIKE_FALL_MS=3200;
 const AIR_STRIKE_STAGGER_MS=220;
-const AIR_STRIKE_START_RISE=1800;
+const AIR_STRIKE_START_RISE=900;
 const NUKE_DAMAGE=20;
 const NUKE_SCAR_RADIUS=118;
 const NUKE_SCAR_DEPTH=230;
@@ -26,7 +26,6 @@ const NUKE_SCAR_STEP=90;
 const NUKE_SCAR_MARGIN=55;
 
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
-const lerp=(a,b,t)=>a+(b-a)*t;
 function distanceToSegment(px,py,ax,ay,bx,by){const dx=bx-ax,dy=by-ay,len2=dx*dx+dy*dy;if(len2<=.0001)return Math.hypot(px-ax,py-ay);const t=clamp(((px-ax)*dx+(py-ay)*dy)/len2,0,1);return Math.hypot(px-(ax+t*dx),py-(ay+t*dy));}
 
 function paceAirStrike(room,q){
