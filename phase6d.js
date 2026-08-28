@@ -42,10 +42,11 @@ function publicState(room){
   return state;
 }
 
-function prepareNuke(room,q,now){
+function prepareNuke(room,q){
   const centerX=clamp(q.impactX,80,WORLD_WIDTH-80);
   const centerY=surface(room,centerX);
-  const beamAt=now+NUKE_WARNING_MS;
+  const targetLockedAt=q.impactAt;
+  const beamAt=targetLockedAt+NUKE_WARNING_MS;
   const ax=clamp(centerX-NUKE_HALF_LENGTH,30,WORLD_WIDTH-30);
   const bx=clamp(centerX+NUKE_HALF_LENGTH,30,WORLD_WIDTH-30);
   const ay=clamp(centerY-650,80,WORLD_HEIGHT-80);
@@ -53,12 +54,12 @@ function prepareNuke(room,q,now){
   q.weaponType='nuke';
   q.targetX=centerX;
   q.targetY=centerY;
+  q.targetLockedAt=targetLockedAt;
   q.warningUntil=beamAt;
   q.beamAt=beamAt;
   q.beamUntil=beamAt+NUKE_BEAM_MS;
   q.nukeApplied=false;
   q.nukeBeam={ax,ay,bx,by,halfWidth:NUKE_BEAM_HALF_WIDTH};
-  q.impactAt=beamAt;
   q.resolveAt=q.beamUntil+NUKE_RESOLVE_BUFFER_MS;
   room.match.turnEndsAt=q.resolveAt;
 }
@@ -127,8 +128,8 @@ export function fireProjectile6D(socketId){
   if(item?.type==='nuke'){
     const q=result.room.match?.projectile;
     if(!q)return{ok:false,error:'nuke_target_failed'};
-    prepareNuke(result.room,q,Date.now());
-    player.lastUtility={type:'nuke',label:'NUKE LASER CHARGING',at:Date.now()};
+    prepareNuke(result.room,q);
+    player.lastUtility={type:'nuke',label:'NUKE LASER DESIGNATOR',at:Date.now()};
   }
   return result;
 }
