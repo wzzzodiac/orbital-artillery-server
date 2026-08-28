@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { activateRoom, createRoom, getRoom, joinRoom, roomStore, setGameMode, setPlayerReady, startRoom } from '../rooms.js';
-import { publicRoomState7A1, rematchRoom7A1, setTerrain7A1 } from '../phase7a1.js';
+import { fireProjectile7A1, publicRoomState7A1, rematchRoom7A1, setTerrain7A1 } from '../phase7a1.js';
 
 function started(ids=['a','b']){
   roomStore.clear();const [host,...rest]=ids;const c=createRoom(host,host.toUpperCase());const room=c.room;
@@ -13,7 +13,13 @@ function started(ids=['a','b']){
 test('Phase 7A.1 public state exposes zeroed authoritative match stats and event feed',()=>{
   const room=started(['a','b','c']);const state=publicRoomState7A1(room);
   assert.equal(state.phase,'7A.1');assert.equal(state.matchStats.length,3);assert.deepEqual(state.eventFeed,[]);
-  for(const s of state.matchStats){assert.equal(s.damageDealt,0);assert.equal(s.damageReceived,0);assert.equal(s.kills,0);assert.equal(s.assists,0);assert.equal(s.pickups,0);assert.equal(s.biggestHit,0);}
+  for(const s of state.matchStats){assert.equal(s.damageDealt,0);assert.equal(s.damageReceived,0);assert.equal(s.kills,0);assert.equal(s.assists,0);assert.equal(s.pickups,0);assert.equal(s.biggestHit,0);assert.equal(s.shotsFired,0);assert.deepEqual(s.weaponUses,{});}
+});
+
+test('successful special use increments authoritative weapon usage telemetry',()=>{
+  const room=started(['a','b']);const active=room.players.find(p=>p.id===room.match.activePlayerId);active.inventory=[{type:'shield',label:'SHIELD'},null];active.selectedItemSlot=2;
+  const r=fireProjectile7A1(active.id);assert.equal(r.ok,true);const state=publicRoomState7A1(room);const stats=state.matchStats.find(s=>s.playerId===active.id);
+  assert.equal(stats.shotsFired,1);assert.equal(stats.weaponUses.shield,1);assert.equal(active.shield?.factor,.5);assert.ok(state.eventFeed.some(e=>e.type==='utility'));
 });
 
 test('host rematch resets combat state while preserving players mode teams and same terrain',()=>{
