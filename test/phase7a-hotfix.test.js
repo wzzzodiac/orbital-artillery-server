@@ -46,7 +46,7 @@ test('jump vaults onto a high terrace without phasing through its side',()=>{
   assert.ok(active.motion.apex>150,`expected dynamic vault apex, got ${active.motion.apex}`);
 });
 
-test('basic projectile reserves at least six seconds so every client can replay launch from muzzle',()=>{
+test('basic projectile reserves four seconds for 1.5x visible playback',()=>{
   const room=started(['a','b']);
   const active=room.players.find(p=>p.id===room.match.activePlayerId);
   active.spawn={x:1000,y:phase7aHotfixTestHooks.surface(room,1000)-8,facing:1};
@@ -56,12 +56,12 @@ test('basic projectile reserves at least six seconds so every client can replay 
   const r=fireProjectile7AHotfix(active.id);
   assert.equal(r.ok,true);
   const q=room.match.projectile;
-  assert.ok(q.impactAt-q.startedAt>=6000);
-  assert.ok(q.durationMs>=6000);
+  assert.ok(q.impactAt-q.startedAt>=4000);
+  assert.ok(q.durationMs>=4000);
   assert.equal(room.match.turnEndsAt,q.resolveAt);
 });
 
-test('box projectile weapons reserve at least seven seconds of visible flight',()=>{
+test('box projectile weapons reserve 4.667 seconds for 1.5x visible playback',()=>{
   const room=started(['a','b']);
   const active=room.players.find(p=>p.id===room.match.activePlayerId);
   giveSpecial(room,active,'heavy','HEAVY BOMB');
@@ -69,11 +69,11 @@ test('box projectile weapons reserve at least seven seconds of visible flight',(
   assert.equal(r.ok,true);
   const q=room.match.projectile;
   assert.equal(q.weaponType,'heavy');
-  assert.ok(q.impactAt-q.startedAt>=7000);
-  assert.ok(q.durationMs>=7000);
+  assert.ok(q.impactAt-q.startedAt>=4667);
+  assert.ok(q.durationMs>=4667);
 });
 
-test('nuke reserves seven-second designator then five-second warning and five-second beam',()=>{
+test('nuke uses 4.667-second designator then keeps five-second warning and five-second beam',()=>{
   const room=started(['a','b']);
   const active=room.players.find(p=>p.id===room.match.activePlayerId);
   giveSpecial(room,active,'nuke','NUKE LASER');
@@ -81,7 +81,7 @@ test('nuke reserves seven-second designator then five-second warning and five-se
   assert.equal(r.ok,true);
   const q=room.match.projectile;
   assert.equal(q.weaponType,'nuke');
-  assert.ok(q.impactAt-q.startedAt>=7000);
+  assert.ok(q.impactAt-q.startedAt>=4667);
   assert.equal(q.beamAt-q.targetLockedAt,5000);
   assert.equal(q.beamUntil-q.beamAt,5000);
   assert.equal(room.match.turnEndsAt,q.resolveAt);
