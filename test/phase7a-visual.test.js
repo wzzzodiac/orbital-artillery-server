@@ -29,7 +29,7 @@ test('Air Strike reserves four seconds per shell for 1.5x full-screen descent',(
   assert.equal(room.match.turnEndsAt,q.resolveAt);
 });
 
-test('Nuke applies 20 direct damage but creates only a shallow diagonal scar, never abyss-depth craters',()=>{
+test('Nuke applies 20 direct damage and a stronger but still survivable diagonal terrain scar',()=>{
   const room=started(['a','b','c']);const {id,p:shooter}=equip(room,'nuke','NUKE LASER');
   const target=room.players.find(x=>x.id!==id);target.hp=100;
   const r=fireProjectile7AVisual(id);assert.equal(r.ok,true);
@@ -42,7 +42,7 @@ test('Nuke applies 20 direct damage but creates only a shallow diagonal scar, ne
   assert.equal(target.hp,80);
   const scars=room.arena.craters.slice(before).filter(c=>String(c.id).includes('nuke-scar'));
   assert.ok(scars.length>0);
-  assert.ok(scars.every(c=>c.depth===230));
+  assert.ok(scars.every(c=>c.depth===299));
   assert.ok(scars.every(c=>c.depth<500),'Nuke terrain deformation must remain a survivable scar, not a vertical void');
   assert.deepEqual(q.pendingVoidDeathIds,[]);
   assert.equal(shooter.alive,true);
