@@ -23,6 +23,7 @@ const NUKE_BEAM_VERTICAL_HALF_SPAN = 320;
 const NUKE_CUT_RADIUS = 145;
 const NUKE_CUT_DEPTH = 4200;
 const NUKE_CUT_STEP = 105;
+const NUKE_TERRAIN_MARGIN = 55;
 const FREE_JUMP_COOLDOWN_MS = 450;
 const FREE_JUMP_VISUAL_MS = 500;
 const GROUND_OFFSET = 8;
@@ -105,7 +106,9 @@ function applyNuke(room,q,now){
 
   for(let x=q.targetX-NUKE_HALF_LENGTH,index=0;x<=q.targetX+NUKE_HALF_LENGTH;x+=NUKE_CUT_STEP,index+=1){
     const cx=clamp(x,30,WORLD_WIDTH-30);
-    if(surface(room,cx)>=WORLD_HEIGHT-1)continue;
+    const cy=surface(room,cx);
+    if(cy>=WORLD_HEIGHT-1)continue;
+    if(distanceToSegment(cx,cy,ax,ay,bx,by)>NUKE_BEAM_HALF_WIDTH+NUKE_TERRAIN_MARGIN)continue;
     room.arena.craters.push({id:`${q.id}-nuke-${index}`,x:cx,radius:NUKE_CUT_RADIUS,depth:NUKE_CUT_DEPTH,createdAt:now});
   }
 
