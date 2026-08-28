@@ -20,11 +20,11 @@ function equip(room,type,label){
   return {id,p};
 }
 
-test('Air Strike shells descend visibly for 3.2 seconds from high above the target',()=>{
+test('Air Strike shells descend visibly for 3.2 seconds from the upper camera band',()=>{
   const room=started();const {id}=equip(room,'airstrike','AIR STRIKE');
   const r=fireProjectile7AVisual(id);assert.equal(r.ok,true);
   const q=room.match.projectile;assert.equal(q.weaponType,'airstrike');assert.equal(q.airStrikeShells.length,7);
-  for(const shell of q.airStrikeShells){assert.equal(shell.impactAt-shell.visualStartAt,3200);assert.ok(shell.startY<=shell.y-1000||shell.startY===80);}
+  for(const shell of q.airStrikeShells){assert.equal(shell.impactAt-shell.visualStartAt,3200);assert.ok(shell.startY<=shell.y-800||shell.startY===80);}
   for(let i=1;i<q.airStrikeShells.length;i++)assert.equal(q.airStrikeShells[i].visualStartAt-q.airStrikeShells[i-1].visualStartAt,220);
   assert.equal(room.match.turnEndsAt,q.resolveAt);
 });
