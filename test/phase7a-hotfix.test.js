@@ -46,7 +46,7 @@ test('jump vaults onto a high terrace without phasing through its side',()=>{
   assert.ok(active.motion.apex>150,`expected dynamic vault apex, got ${active.motion.apex}`);
 });
 
-test('basic projectile has at least three seconds of visible flight',()=>{
+test('basic projectile reserves at least six seconds so every client can replay launch from muzzle',()=>{
   const room=started(['a','b']);
   const active=room.players.find(p=>p.id===room.match.activePlayerId);
   active.spawn={x:1000,y:phase7aHotfixTestHooks.surface(room,1000)-8,facing:1};
@@ -56,12 +56,12 @@ test('basic projectile has at least three seconds of visible flight',()=>{
   const r=fireProjectile7AHotfix(active.id);
   assert.equal(r.ok,true);
   const q=room.match.projectile;
-  assert.ok(q.impactAt-q.startedAt>=3000);
-  assert.ok(q.durationMs>=3000);
+  assert.ok(q.impactAt-q.startedAt>=6000);
+  assert.ok(q.durationMs>=6000);
   assert.equal(room.match.turnEndsAt,q.resolveAt);
 });
 
-test('box projectile weapons have at least four seconds of visible flight',()=>{
+test('box projectile weapons reserve at least seven seconds of visible flight',()=>{
   const room=started(['a','b']);
   const active=room.players.find(p=>p.id===room.match.activePlayerId);
   giveSpecial(room,active,'heavy','HEAVY BOMB');
@@ -69,11 +69,11 @@ test('box projectile weapons have at least four seconds of visible flight',()=>{
   assert.equal(r.ok,true);
   const q=room.match.projectile;
   assert.equal(q.weaponType,'heavy');
-  assert.ok(q.impactAt-q.startedAt>=4000);
-  assert.ok(q.durationMs>=4000);
+  assert.ok(q.impactAt-q.startedAt>=7000);
+  assert.ok(q.durationMs>=7000);
 });
 
-test('nuke uses four-second designator then five-second warning and five-second beam',()=>{
+test('nuke reserves seven-second designator then five-second warning and five-second beam',()=>{
   const room=started(['a','b']);
   const active=room.players.find(p=>p.id===room.match.activePlayerId);
   giveSpecial(room,active,'nuke','NUKE LASER');
@@ -81,21 +81,43 @@ test('nuke uses four-second designator then five-second warning and five-second 
   assert.equal(r.ok,true);
   const q=room.match.projectile;
   assert.equal(q.weaponType,'nuke');
-  assert.ok(q.impactAt-q.startedAt>=4000);
+  assert.ok(q.impactAt-q.startedAt>=7000);
   assert.equal(q.beamAt-q.targetLockedAt,5000);
   assert.equal(q.beamUntil-q.beamAt,5000);
   assert.equal(room.match.turnEndsAt,q.resolveAt);
 });
 
-test('repeated two-player turn timeouts never create a winner while both players are alive',()=>{
+test('terrain impact keeps the actual wall-face contact height instead of snapping to the top corner',()=>{
+  const room=started(['a','b'],'terraces');
+  const v={startedAt:0,impactAt:500,durationMs:500,startX:300,startY:3400,vx:100,vy:0,gravity:0,windAccel:0,impactX:350,impactY:3190,impactReason:'terrain',resolveAt:1400};
+  assert.equal(phase7aHotfixTestHooks.correctTerrainImpactFace(room,v),true);
+  assert.ok(v.impactX>328&&v.impactX<332,`expected wall face near x=330, got ${v.impactX}`);
+  assert.ok(v.impactY>3350,`impact should remain on the vertical face, not snap to terrace top: ${v.impactY}`);
+  assert.equal(v.terrainImpactFaceCorrected,true);
+});
+
+test('repeated two-player turn timeouts never create a winner while both players have HP',()=>{
   const room=started(['a','b']);
   for(let i=0;i<12;i+=1){
     const next=advanceTurnIfDue7AHotfix(room.code,room.match.turnEndsAt+1);
     assert.ok(next);
     assert.equal(room.status,'started');
     assert.equal(room.match.result,null);
-    assert.equal(room.players.filter(p=>p.alive!==false).length,2);
+    assert.equal(room.players.filter(p=>(p.hp??100)>0).length,2);
   }
+});
+
+test('transient alive=false with positive HP can never award victory',()=>{
+  const room=started(['a','b']);
+  const a=room.players[0],b=room.players[1];
+  b.hp=100;b.alive=false;
+  room.match.pendingResult={type:'survival',winnerPlayerId:a.id,winnerName:a.name,draw:false};
+  const next=advanceTurnIfDue7AHotfix(room.code,room.match.turnEndsAt+1);
+  assert.ok(next);
+  assert.equal(room.status,'started');
+  assert.equal(room.match.result,null);
+  assert.equal(b.alive,true);
+  assert.equal(b.hp,100);
 });
 
 test('two-player disconnect removes the tank and awards victory to the remaining player',()=>{
