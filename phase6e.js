@@ -46,10 +46,17 @@ function rebalanceNewPickup(room){
   return changed;
 }
 
+function publicPickup(box){
+  if(!box)return box;
+  const { phase6cPoolRolled, phase6dPoolRolled, phase6ePoolRolled, ...publicBox }=box;
+  return publicBox;
+}
+
 function publicState(room){
   let state=basePublic(room);
   if(rebalanceNewPickup(room))state=basePublic(room);
   state.phase='6E';
+  state.pickups=(state.pickups??[]).map(publicPickup);
   state.itemPool=PHASE6E_ITEM_POOL.map(item=>({...item}));
   state.balanceRules={
     poolTotal:PHASE6E_POOL_TOTAL,
