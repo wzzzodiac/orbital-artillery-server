@@ -16,8 +16,8 @@ import {
 
 const WORLD_HEIGHT=5000;
 const GROUND_OFFSET=8;
-const AIR_STRIKE_FALL_MS=3200;
-const AIR_STRIKE_STAGGER_MS=220;
+const AIR_STRIKE_FALL_MS=6000;
+const AIR_STRIKE_STAGGER_MS=350;
 const AIR_STRIKE_START_RISE=900;
 const NUKE_DAMAGE=20;
 const NUKE_SCAR_RADIUS=118;
@@ -90,9 +90,10 @@ function applySafeNuke(room,q,now){
 export function publicRoomState7AVisual(room){
   const state=basePublic(room);
   state.visualHardening={
-    projectileTrail:'full-flight',
+    projectileTrail:'full-flight-from-muzzle',
     airStrikeFallMs:AIR_STRIKE_FALL_MS,
     airStrikeStaggerMs:AIR_STRIKE_STAGGER_MS,
+    airStrikeOrigin:'top-edge',
     nukeTerrainMode:'diagonal-scar',
     nukeScarDepth:NUKE_SCAR_DEPTH,
     nukeDamage:NUKE_DAMAGE
