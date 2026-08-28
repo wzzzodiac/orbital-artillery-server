@@ -179,6 +179,9 @@ function exposeFreeTraversal(room){
   room.match.movementRadius=WORLD_WIDTH;
   room.match.jumpsRemaining=null;
 }
+function canApplyJumpCooldown(room,player,socketId,now){
+  return Boolean(room?.status==='started'&&room.match?.activePlayerId===socketId&&!room.match?.projectile&&player?.spawn&&player.alive!==false&&!(player.motion?.endsAt&&now<player.motion.endsAt));
+}
 
 export function publicRoomState6D(room){return publicState(room);}
 export function advanceTurnIfDue6D(code,now=Date.now()){const room=getRoom(code);if(room?.match?.projectile?.weaponType==='nuke')return advanceNuke(room,now);return baseAdvance(code,now);}
@@ -196,14 +199,14 @@ export function jumpActivePlayer6D(socketId,direction){
   if(!room)return{ok:false,error:'not_in_room'};
   const player=room.players.find(p=>p.id===socketId);
   const now=Date.now();
-  if(player?.lastFreeJumpAt&&now-player.lastFreeJumpAt<FREE_JUMP_COOLDOWN_MS)return{ok:false,error:'jump_cooldown'};
+  if(canApplyJumpCooldown(room,player,socketId,now)&&player?.lastFreeJumpAt&&now-player.lastFreeJumpAt<FREE_JUMP_COOLDOWN_MS)return{ok:false,error:'jump_cooldown'};
   const snapshot=traversalSnapshot(room);
   unlockMovementEnvelope(room);
   if(room.match)room.match.jumpsRemaining=999999;
   const result=baseJump(socketId,direction);
   if(!result.ok){restoreTraversal(room,snapshot);return result;}
   player.lastFreeJumpAt=now;
-  if(player.motion?.type==='jump')player.motion.endsAt=player.motion.startedAt+FREE_JUMP_VISUAL_MS;
+  if(player.motion?.type==='jump'&&Number(player.motion.toY)<=WORLD_HEIGHT)player.motion.endsAt=player.motion.startedAt+FREE_JUMP_VISUAL_MS;
   exposeFreeTraversal(result.room);
   return result;
 }
