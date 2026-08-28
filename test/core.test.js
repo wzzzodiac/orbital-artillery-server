@@ -12,7 +12,7 @@ import {
   setPlayerReady,
   startRoom
 } from '../rooms.js';
-import { ensureAfkVoteState, toggleAfkSkipVote } from '../afk-vote.js';
+import { ensureAfkVoteState, registerActiveTurnActivity, toggleAfkSkipVote } from '../afk-vote.js';
 import { advanceTurnIfDue6A, publicRoomState6A } from '../phase6a.js';
 
 function makeStartedRoom(ids) {
@@ -72,6 +72,31 @@ test('AFK vote auto-passes if a disconnect lowers the majority threshold below e
   assert.equal(updated.votes.length, 2);
   assert.equal(room.match.turnEndsAt, now + 1);
   assert.equal(room.match.lastAfkSkip?.skippedTurnNumber, 11);
+});
+
+test('active input cancels an AFK skip that became pending after voter eligibility changed', () => {
+  const room = makeStartedRoom(['a', 'b', 'c', 'd', 'e']);
+  const now = Date.now();
+  const originalDeadline = now + 10_000;
+  room.match.turnOrder = ['a', 'b', 'c', 'd', 'e'];
+  room.match.turnIndex = 0;
+  room.match.activePlayerId = 'a';
+  room.match.turnNumber = 12;
+  room.match.turnStartedAt = now - 30_000;
+  room.match.turnEndsAt = originalDeadline;
+  room.match.projectile = null;
+
+  ensureAfkVoteState(room, now);
+  toggleAfkSkipVote('b', now);
+  toggleAfkSkipVote('c', now);
+  removePlayer('e');
+  ensureAfkVoteState(room, now + 1);
+  assert.equal(room.match.turnEndsAt, now + 1);
+
+  assert.equal(registerActiveTurnActivity(room, 'a', now + 2), true);
+  assert.equal(room.match.turnEndsAt, originalDeadline);
+  assert.equal(room.match.lastAfkSkip, null);
+  assert.deepEqual(room.match.afkSkipVote.votes, []);
 });
 
 test('pickup lifetime of four turns is not off by one', () => {
@@ -188,4 +213,54 @@ test('Triple Shot neutralizes the internal BASIC hit before applying all three s
   assert.equal(projectile.baseNeutralized, true);
   assert.equal(projectile.specialResolutionApplied, true);
   assert.equal(room.arena.craters.some(crater => crater.id === projectile.id), false);
+});
+
+test('Triple Shot with a central out-of-bounds miss does not let the BASIC resolver corrupt the turn', () => {
+  const room = makeStartedRoom(['a', 'b']);
+  const shooter = room.players.find(player => player.id === 'a');
+  const now = Date.now();
+  const nextPlayer = room.match.turnOrder[(room.match.turnIndex + 1) % room.match.turnOrder.length];
+  const projectile = {
+    id: 'triple-oob',
+    ownerPlayerId: shooter.id,
+    startedAt: now - 1000,
+    impactAt: now,
+    resolveAt: now + 900,
+    durationMs: 1000,
+    startX: shooter.spawn.x,
+    startY: shooter.spawn.y - 24,
+    vx: 0,
+    vy: 0,
+    gravity: 480,
+    windAccel: 0,
+    impactX: 5000,
+    impactY: 1000,
+    impactReason: 'out_of_bounds',
+    hitPlayerId: null,
+    angle: 45,
+    power: 55,
+    resolutionApplied: false,
+    weaponType: 'triple',
+    resumeTurnMs: 20_000,
+    pickupCollected: false,
+    specialResolveAt: now,
+    volley: [],
+    preImpactHp: Object.fromEntries(room.players.map(player => [player.id, player.hp])),
+    preImpactAlive: Object.fromEntries(room.players.map(player => [player.id, player.alive !== false])),
+    preImpactSpawns: cloneSpawns(room)
+  };
+  room.match.activePlayerId = shooter.id;
+  room.match.projectile = projectile;
+  room.match.turnEndsAt = projectile.resolveAt;
+  const oldTurnNumber = room.match.turnNumber;
+
+  advanceTurnIfDue6A(room.code, now);
+  assert.equal(projectile.resolutionApplied, true);
+  assert.equal(projectile.baseNeutralized, true);
+  assert.equal(room.match.activePlayerId, shooter.id);
+
+  advanceTurnIfDue6A(room.code, now + 901);
+  assert.equal(room.match.activePlayerId, nextPlayer);
+  assert.equal(room.match.turnNumber, oldTurnNumber + 1);
+  assert.ok(room.match.turnEndsAt > now + 901);
 });
