@@ -16,10 +16,10 @@ import {
 
 const WORLD_HEIGHT=5000;
 const GROUND_OFFSET=8;
-const AIR_STRIKE_FALL_MS=6000;
-const AIR_STRIKE_STAGGER_MS=350;
+const AIR_STRIKE_FALL_MS=4000;
+const AIR_STRIKE_STAGGER_MS=233;
 const AIR_STRIKE_START_RISE=900;
-const PROJECTILE_LAUNCH_HOLD_MS=850;
+const PROJECTILE_LAUNCH_HOLD_MS=567;
 const NUKE_DAMAGE=20;
 const NUKE_SCAR_RADIUS=118;
 const NUKE_SCAR_DEPTH=230;
@@ -113,6 +113,7 @@ export function publicRoomState7AVisual(room){
     projectileLaunchHoldMs:PROJECTILE_LAUNCH_HOLD_MS,
     airStrikeFallMs:AIR_STRIKE_FALL_MS,
     airStrikeStaggerMs:AIR_STRIKE_STAGGER_MS,
+    projectilePlaybackSpeedMultiplier:1.5,
     nukeTerrainMode:'diagonal-scar',
     nukeScarDepth:NUKE_SCAR_DEPTH,
     nukeDamage:NUKE_DAMAGE
