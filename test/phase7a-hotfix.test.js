@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { activateRoom, createRoom, getRoom, joinRoom, roomStore, setGameMode, setPlayerReady, startRoom } from '../rooms.js';
 import { setTerrain7A1 } from '../phase7a1.js';
 import {
+  advanceTurnIfDue7AHotfix,
   disconnectPlayer7AHotfix,
   fireProjectile7AHotfix,
   jumpActivePlayer7AHotfix,
@@ -50,6 +51,17 @@ test('short projectile flights are stretched to at least one visible second with
   assert.ok(q.impactAt-q.startedAt>=1000);
   assert.ok(q.durationMs>=1000);
   assert.equal(room.match.turnEndsAt,q.resolveAt);
+});
+
+test('repeated two-player turn timeouts never create a winner while both players are alive',()=>{
+  const room=started(['a','b']);
+  for(let i=0;i<12;i+=1){
+    const next=advanceTurnIfDue7AHotfix(room.code,room.match.turnEndsAt+1);
+    assert.ok(next);
+    assert.equal(room.status,'started');
+    assert.equal(room.match.result,null);
+    assert.equal(room.players.filter(p=>p.alive!==false).length,2);
+  }
 });
 
 test('disconnect during a live survival match does not award a victory',()=>{
