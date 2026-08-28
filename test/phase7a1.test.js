@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { activateRoom, createRoom, getRoom, joinRoom, roomStore, setGameMode, setPlayerReady, startRoom } from '../rooms.js';
-import { fireProjectile7A1, publicRoomState7A1, rematchRoom7A1, setTerrain7A1 } from '../phase7a1.js';
+import { fireProjectile7A1, phase7a1TestHooks, publicRoomState7A1, rematchRoom7A1, setTerrain7A1 } from '../phase7a1.js';
 
 function started(ids=['a','b']){
   roomStore.clear();const [host,...rest]=ids;const c=createRoom(host,host.toUpperCase());const room=c.room;
@@ -20,6 +20,19 @@ test('successful special use increments authoritative weapon usage telemetry',()
   const room=started(['a','b']);const active=room.players.find(p=>p.id===room.match.activePlayerId);active.inventory=[{type:'shield',label:'SHIELD'},null];active.selectedItemSlot=2;
   const r=fireProjectile7A1(active.id);assert.equal(r.ok,true);const state=publicRoomState7A1(room);const stats=state.matchStats.find(s=>s.playerId===active.id);
   assert.equal(stats.shotsFired,1);assert.equal(stats.weaponUses.shield,1);assert.equal(active.shield?.factor,.5);assert.ok(state.eventFeed.some(e=>e.type==='utility'));
+});
+
+test('self damage counts as received but never inflates dealt damage or biggest hit',()=>{
+  const room=started(['a','b']);const p=room.players[0];const before=phase7a1TestHooks.snapshot(room);const now=Date.now();p.hp=72;p.lastDamage={amount:28,at:now,sourcePlayerId:p.id};
+  phase7a1TestHooks.observe(room,before,{sourceId:p.id,weaponType:'basic'});const stats=publicRoomState7A1(room).matchStats.find(s=>s.playerId===p.id);
+  assert.equal(stats.damageReceived,28);assert.equal(stats.damageDealt,0);assert.equal(stats.biggestHit,0);
+});
+
+test('impact damage is preserved when the same resolution also sends the target into the void',()=>{
+  const room=started(['a','b']);const shooter=room.players[0],target=room.players[1],before=phase7a1TestHooks.snapshot(room),now=Date.now();
+  target.hp=0;target.alive=false;target.spawn={...target.spawn,y:5120};target.motion={type:'knockbackVoid',startedAt:now,endsAt:now+500,toX:target.spawn.x,toY:5120};target.lastDamage={amount:23,at:now,sourcePlayerId:shooter.id};
+  phase7a1TestHooks.observe(room,before,{sourceId:shooter.id,weaponType:'basic'});const state=publicRoomState7A1(room),s=state.matchStats.find(x=>x.playerId===shooter.id),t=state.matchStats.find(x=>x.playerId===target.id);
+  assert.equal(s.damageDealt,23);assert.equal(s.biggestHit,23);assert.equal(s.kills,1);assert.equal(t.damageReceived,23);assert.equal(t.voidDeaths,1);assert.equal(state.deathAttribution[target.id].cause,'terrain_collapse');
 });
 
 test('host rematch resets combat state while preserving players mode teams and same terrain',()=>{
