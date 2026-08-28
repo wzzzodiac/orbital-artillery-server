@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { activateRoom, createRoom, joinRoom, roomStore, setGameMode, setPlayerReady, startRoom } from '../rooms.js';
-import { advanceTurnIfDue7AVisual, fireProjectile7AVisual } from '../phase7a-visual.js';
+import { advanceTurnIfDue7AVisual, fireProjectile7AVisual, phase7aVisualTestHooks } from '../phase7a-visual.js';
 
 function started(ids=['a','b']){
   roomStore.clear();
@@ -27,6 +27,16 @@ test('Air Strike reserves four seconds per shell for 1.5x full-screen descent',(
   for(const shell of q.airStrikeShells){assert.equal(shell.impactAt-shell.visualStartAt,4000);assert.ok(shell.startY<=shell.y-800||shell.startY===80);}
   for(let i=1;i<q.airStrikeShells.length;i++)assert.equal(q.airStrikeShells[i].visualStartAt-q.airStrikeShells[i-1].visualStartAt,233);
   assert.equal(room.match.turnEndsAt,q.resolveAt);
+});
+
+test('vehicle projectile hitbox is doubled from 26 to 52 world units',()=>{
+  const room={players:[{id:'a',alive:true,spawn:{x:0,y:100}},{id:'b',alive:true,spawn:{x:300,y:100}}],match:{turnEndsAt:0}};
+  const v={ownerPlayerId:'a',startedAt:1000,durationMs:1000,impactAt:2000,startX:200,startY:50,vx:100,vy:0,gravity:0,windAccel:0,impactX:400,impactY:50,impactReason:'terrain',hitPlayerId:null};
+  assert.equal(phase7aVisualTestHooks.expandOneProjectileHit(room,v,'a'),true);
+  assert.equal(v.hitPlayerId,'b');
+  assert.equal(v.impactReason,'player');
+  assert.equal(v.expandedVehicleHitbox7A,true);
+  assert.ok(Math.hypot(v.impactX-300,v.impactY-90)<=52.5);
 });
 
 test('Nuke applies 20 direct damage and a stronger but still survivable diagonal terrain scar',()=>{
