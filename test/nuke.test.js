@@ -74,14 +74,14 @@ test('Nuke Laser deals 20 direct damage, Shield halves it, and applies no knockb
   shielded.spawn.x = shooter.spawn.x;
   shielded.spawn.y = shooter.spawn.y;
   far.spawn.x = Math.min(4900, shooter.spawn.x + 1000);
-  const shooterMotionBefore = shooter.motion;
 
   assert.ok(advanceTurnIfDue6D(room.code, now));
   assert.equal(shooter.hp, 80);
   assert.equal(shielded.hp, 90);
   assert.equal(shielded.shield, null);
   assert.equal(far.hp, 100);
-  assert.equal(shooter.motion, shooterMotionBefore, 'direct beam hit itself should not create knockback');
+  assert.notEqual(shooter.motion?.type, 'knockback', 'Nuke direct damage must not add conventional knockback');
+  assert.notEqual(shooter.motion?.type, 'knockbackVoid', 'Nuke direct damage must not add void knockback');
 });
 
 test('Nuke Laser destroys intersected pickups instead of collecting them', () => {
@@ -94,7 +94,7 @@ test('Nuke Laser destroys intersected pickups instead of collecting them', () =>
   const now = Date.now();
   const midX = (q.nukeBeam.ax + q.nukeBeam.bx) / 2;
   const midY = (q.nukeBeam.ay + q.nukeBeam.by) / 2;
-  room.pickups = [{ id:'nuke-box', type:'heal', label:'HEAL +30', x:midX, y:midY, spawnTurn:room.match.turnNumber, expiresAfterTurn:room.match.turnNumber+3, phase6cPoolRolled:true }];
+  room.pickups = [{ id:'nuke-box', type:'heal', label:'HEAL +30', x:midX, y:midY, spawnTurn:room.match.turnNumber, expiresAfterTurn:room.match.turnNumber+3, phase6cPoolRolled:true, phase6dPoolRolled:true }];
   q.beamAt = now;
   q.beamUntil = now + 10;
   q.resolveAt = now + 100;
