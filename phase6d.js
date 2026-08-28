@@ -1,3 +1,4 @@
+import { randomInt } from 'node:crypto';
 import { findRoomBySocket, getRoom } from './rooms.js';
 import {
   advanceTurnIfDue6A as baseAdvance,
@@ -10,6 +11,8 @@ import {
 
 const MAX_HP = 100;
 const NUKE_WEIGHT = 3;
+const PHASE6C_POOL_WEIGHT = 123;
+const FULL_POOL_WEIGHT = PHASE6C_POOL_WEIGHT + NUKE_WEIGHT;
 const NUKE_DAMAGE = 20;
 const NUKE_WARNING_MS = 850;
 const NUKE_BEAM_MS = 420;
@@ -32,9 +35,21 @@ function surface(room,x){const px=clamp(x,0,WORLD_WIDTH),p=room.terrainPreset||'
 
 function resultFor(room){const alive=room.players.filter(p=>p.alive!==false);if(room.mode==='survival'){if(alive.length>1)return null;return{type:'survival',winnerPlayerId:alive[0]?.id??null,winnerName:alive[0]?.name??null,draw:alive.length===0};}const teams=[...new Set(alive.map(p=>p.team))];if(teams.length>1)return null;return{type:'team',winnerTeam:teams[0]??null,draw:teams.length===0};}
 function distanceToSegment(px,py,ax,ay,bx,by){const dx=bx-ax,dy=by-ay,len2=dx*dx+dy*dy;if(len2<=.0001)return Math.hypot(px-ax,py-ay);const t=clamp(((px-ax)*dx+(py-ay)*dy)/len2,0,1);return Math.hypot(px-(ax+t*dx),py-(ay+t*dy));}
+function rollNukeForNewPickup(room){
+  if(!room?.match||!Array.isArray(room.pickups))return false;
+  const turn=room.match.turnNumber??0;
+  let changed=false;
+  for(const box of room.pickups){
+    if(box.spawnTurn!==turn||box.phase6dPoolRolled)continue;
+    box.phase6dPoolRolled=true;
+    if(randomInt(FULL_POOL_WEIGHT)<NUKE_WEIGHT){box.type='nuke';box.label='NUKE LASER';changed=true;}
+  }
+  return changed;
+}
 
 function publicState(room){
-  const state=basePublic(room);
+  let state=basePublic(room);
+  if(rollNukeForNewPickup(room))state=basePublic(room);
   state.phase='6D';
   if(!state.itemPool.some(item=>item.type==='nuke')) state.itemPool=[...state.itemPool,{type:'nuke',label:'NUKE LASER',weight:NUKE_WEIGHT}];
   state.nukeRules={damage:NUKE_DAMAGE,weight:NUKE_WEIGHT,warningMs:NUKE_WARNING_MS,beamMs:NUKE_BEAM_MS,halfLength:NUKE_HALF_LENGTH,beamHalfWidth:NUKE_BEAM_HALF_WIDTH,knockback:false,fullFriendlyFire:true,selfDamage:true,pickups:'destroy'};
