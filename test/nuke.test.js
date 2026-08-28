@@ -10,7 +10,7 @@ import {
   setPlayerReady,
   startRoom
 } from '../rooms.js';
-import { advanceTurnIfDue6D, fireProjectile6D, publicRoomState6D } from '../phase6d.js';
+import { advanceTurnIfDue6D, fireProjectile6D, jumpActivePlayer6D, moveActivePlayer6D, publicRoomState6D } from '../phase6d.js';
 
 function makeStartedRoom(ids = ['a', 'b']) {
   roomStore.clear();
@@ -35,7 +35,7 @@ function equipNuke(room, playerId) {
   return player;
 }
 
-test('Nuke Laser consumes item and creates delayed Phase 6D beam state', () => {
+test('Nuke Laser consumes item and creates a three-second catastrophic beam sequence', () => {
   const room = makeStartedRoom();
   const activeId = room.match.activePlayerId;
   const player = equipNuke(room, activeId);
@@ -46,10 +46,12 @@ test('Nuke Laser consumes item and creates delayed Phase 6D beam state', () => {
   assert.equal(player.inventory[0], null);
   assert.equal(player.selectedItemSlot, 1);
   assert.equal(room.match.turnNumber, turnBefore);
-  assert.equal(room.match.projectile?.weaponType, 'nuke');
-  assert.ok(room.match.projectile?.warningUntil > Date.now());
-  assert.ok(room.match.projectile?.beamAt >= room.match.projectile?.warningUntil);
-  assert.ok(room.match.projectile?.nukeBeam);
+  const q = room.match.projectile;
+  assert.equal(q?.weaponType, 'nuke');
+  assert.equal(q.warningUntil - q.targetLockedAt, 3000);
+  assert.equal(q.beamUntil - q.beamAt, 3000);
+  assert.ok(q?.nukeBeam);
+  assert.ok((q.nukeBeam.bx-q.nukeBeam.ax) >= 1500, 'beam should cover a major terrain section');
 });
 
 test('Nuke Laser deals 20 direct damage, Shield halves it, and applies no knockback', () => {
@@ -67,7 +69,7 @@ test('Nuke Laser deals 20 direct damage, Shield halves it, and applies no knockb
   assert.equal(result.ok, true);
   const q = room.match.projectile;
   const now = Date.now();
-  q.nukeBeam = { ax:shooter.spawn.x-100, ay:shooter.spawn.y-10, bx:shooter.spawn.x+100, by:shooter.spawn.y-10, halfWidth:88 };
+  q.nukeBeam = { ax:shooter.spawn.x-100, ay:shooter.spawn.y-10, bx:shooter.spawn.x+100, by:shooter.spawn.y-10, halfWidth:115 };
   q.beamAt = now;
   q.beamUntil = now + 20;
   q.resolveAt = now + 200;
@@ -123,15 +125,58 @@ test('Nuke Laser always ends the turn after resolution', () => {
   assert.ok(room.match.turnNumber > turnBefore || room.status === 'finished');
 });
 
-test('public Phase 6D state advertises Nuke Laser rules and rarity', () => {
+test('Phase 6D movement ignores the old 520 radius during the active turn', () => {
+  const room = makeStartedRoom();
+  const activeId = room.match.activePlayerId;
+  const player = room.players.find(entry => entry.id === activeId);
+  room.terrainPreset='terraces';
+  room.arena.terrainPreset='terraces';
+  player.spawn={x:1045,y:2912,facing:1};
+  player.motion=null;
+  room.match.movementOriginX=1045;
+  room.match.movementRadius=520;
+  const startX=player.spawn.x;
+  for(let i=0;i<36;i+=1){
+    const moved=moveActivePlayer6D(activeId,1);
+    assert.equal(moved.ok,true,`free move ${i+1} should succeed`);
+  }
+  assert.ok(player.spawn.x-startX>520);
+});
+
+test('Phase 6D jump ignores the old two-jump quota and exposes free-movement rules', () => {
+  const room = makeStartedRoom();
+  const activeId = room.match.activePlayerId;
+  const player = room.players.find(entry => entry.id === activeId);
+  room.terrainPreset='terraces';
+  room.arena.terrainPreset='terraces';
+  player.spawn={x:1100,y:2912,facing:1};
+  player.motion=null;
+  player.lastFreeJumpAt=0;
+  room.match.jumpsRemaining=0;
+  const jumped=jumpActivePlayer6D(activeId,1);
+  assert.equal(jumped.ok,true);
+  assert.equal(player.motion?.type,'jump');
+  assert.equal(player.motion.endsAt-player.motion.startedAt,500);
+  const state=publicRoomState6D(room);
+  assert.equal(state.movementRules.freeDuringTurn,true);
+  assert.equal(state.movementRules.jumpsPerTurn,null);
+  assert.equal(state.movementRules.jumpCooldownMs,450);
+});
+
+test('public Phase 6D state advertises Nuke rarity, cinematic timings and spectator aim', () => {
   const room = makeStartedRoom();
   const state = publicRoomState6D(room);
   assert.equal(state.phase, '6D');
   assert.equal(state.nukeRules.damage, 20);
+  assert.equal(state.nukeRules.warningMs, 3000);
+  assert.equal(state.nukeRules.beamMs, 3000);
   assert.equal(state.nukeRules.knockback, false);
   assert.equal(state.nukeRules.pickups, 'destroy');
   assert.equal(state.nukeRules.fullFriendlyFire, true);
   assert.equal(state.nukeRules.selfDamage, true);
+  assert.equal(state.spectatorAim.activePlayerId, room.match.activePlayerId);
+  assert.equal(state.spectatorAim.angle, room.match.aimAngle);
+  assert.equal(state.spectatorAim.power, room.match.aimPower);
   const item = state.itemPool.find(entry => entry.type === 'nuke');
   assert.deepEqual(item, { type:'nuke', label:'NUKE LASER', weight:3 });
 });
