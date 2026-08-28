@@ -52,6 +52,7 @@ test('Nuke Laser consumes item and creates a three-second catastrophic beam sequ
   assert.equal(q.beamUntil - q.beamAt, 3000);
   assert.ok(q?.nukeBeam);
   assert.ok((q.nukeBeam.bx-q.nukeBeam.ax) >= 1500, 'beam should cover a major terrain section');
+  assert.ok(Math.abs(q.nukeBeam.by-q.nukeBeam.ay) <= 640, 'beam should stay diagonal across the terrain band instead of becoming near-vertical');
 });
 
 test('Nuke Laser deals 20 direct damage, Shield halves it, and applies no knockback', () => {
@@ -161,6 +162,39 @@ test('Phase 6D jump ignores the old two-jump quota and exposes free-movement rul
   assert.equal(state.movementRules.freeDuringTurn,true);
   assert.equal(state.movementRules.jumpsPerTurn,null);
   assert.equal(state.movementRules.jumpCooldownMs,450);
+  assert.equal(state.match.movementRadius,null);
+  assert.equal(state.match.jumpsRemaining,null);
+});
+
+test('invalid spectator traversal does not mutate shared Phase 6D movement state', () => {
+  const room = makeStartedRoom(['a','b','c']);
+  const activeId = room.match.activePlayerId;
+  const spectator = room.players.find(player => player.id !== activeId);
+  room.match.movementOriginX = 777;
+  room.match.movementRadius = 520;
+  room.match.jumpsRemaining = 2;
+  const before = {
+    movementOriginX: room.match.movementOriginX,
+    movementRadius: room.match.movementRadius,
+    jumpsRemaining: room.match.jumpsRemaining,
+    spectatorSpawn: { ...spectator.spawn }
+  };
+
+  const moved = moveActivePlayer6D(spectator.id, 1);
+  assert.equal(moved.ok, false);
+  assert.equal(moved.error, 'not_your_turn');
+  assert.equal(room.match.movementOriginX, before.movementOriginX);
+  assert.equal(room.match.movementRadius, before.movementRadius);
+  assert.equal(room.match.jumpsRemaining, before.jumpsRemaining);
+  assert.deepEqual(spectator.spawn, before.spectatorSpawn);
+
+  const jumped = jumpActivePlayer6D(spectator.id, 1);
+  assert.equal(jumped.ok, false);
+  assert.equal(jumped.error, 'not_your_turn');
+  assert.equal(room.match.movementOriginX, before.movementOriginX);
+  assert.equal(room.match.movementRadius, before.movementRadius);
+  assert.equal(room.match.jumpsRemaining, before.jumpsRemaining);
+  assert.deepEqual(spectator.spawn, before.spectatorSpawn);
 });
 
 test('public Phase 6D state advertises Nuke rarity, cinematic timings and spectator aim', () => {
@@ -170,6 +204,7 @@ test('public Phase 6D state advertises Nuke rarity, cinematic timings and specta
   assert.equal(state.nukeRules.damage, 20);
   assert.equal(state.nukeRules.warningMs, 3000);
   assert.equal(state.nukeRules.beamMs, 3000);
+  assert.equal(state.nukeRules.beamVerticalHalfSpan, 320);
   assert.equal(state.nukeRules.knockback, false);
   assert.equal(state.nukeRules.pickups, 'destroy');
   assert.equal(state.nukeRules.fullFriendlyFire, true);
