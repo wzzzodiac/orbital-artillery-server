@@ -17,13 +17,13 @@ import {
   startRoom
 } from './rooms.js';
 import {
-  advanceTurnIfDue6A,
-  fireProjectile6A,
-  jumpActivePlayer6A,
-  moveActivePlayer6A,
-  publicRoomState6A,
-  selectItem6A
-} from './phase6c.js';
+  advanceTurnIfDue6D,
+  fireProjectile6D,
+  jumpActivePlayer6D,
+  moveActivePlayer6D,
+  publicRoomState6D,
+  selectItem6D
+} from './phase6d.js';
 import {
   ensureAfkVoteState,
   registerActiveTurnActivity,
@@ -38,12 +38,12 @@ setInterval(() => { const cutoff = Date.now() - 120_000; for (const [ip, window]
 
 let io;
 const httpServer = createServer((req, res) => {
-  if (req.url === '/health') { res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' }); res.end(JSON.stringify({ ok: true, service: 'orbital-artillery-server', phase: '6C.2', rooms: roomStore.size, sockets: io?.engine?.clientsCount ?? 0 })); return; }
+  if (req.url === '/health') { res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' }); res.end(JSON.stringify({ ok: true, service: 'orbital-artillery-server', phase: '6D', rooms: roomStore.size, sockets: io?.engine?.clientsCount ?? 0 })); return; }
   res.writeHead(404, { 'content-type': 'application/json; charset=utf-8' }); res.end(JSON.stringify({ error: 'not_found' }));
 });
 
 io = new SocketIOServer(httpServer, { cors: { origin: CONFIG.clientOrigin, methods: ['GET', 'POST'] }, allowRequest: (req, callback) => { const ip = clientIpFromRequest(req); if (io.engine.clientsCount >= CONFIG.maxConcurrentSockets) return callback('server_capacity_reached', false); if (!allowConnectionAttempt(ip)) return callback('connection_rate_limited', false); callback(null, true); } });
-function publicState(room) { ensureAfkVoteState(room); return publicRoomState6A(room); }
+function publicState(room) { ensureAfkVoteState(room); return publicRoomState6D(room); }
 function emitRoomState(room) { io.to(room.code).emit('room_state', publicState(room)); }
 
 setInterval(() => {
@@ -52,7 +52,7 @@ setInterval(() => {
     let changed = null;
     if (room.status === 'countdown' && now >= room.match?.startAt) changed = activateRoom(room.code, now);
     else if (room.status === 'started') {
-      for (let catchUp = 0; catchUp < 8; catchUp += 1) { const advanced = advanceTurnIfDue6A(room.code, now); if (!advanced) break; changed = advanced; }
+      for (let catchUp = 0; catchUp < 8; catchUp += 1) { const advanced = advanceTurnIfDue6D(room.code, now); if (!advanced) break; changed = advanced; }
     }
     if (changed) emitRoomState(changed);
   }
@@ -78,16 +78,16 @@ io.on('connection', socket => {
   socket.on('set_ready', (payload, reply = () => {}) => { if (!allowRoomAction()) return reply({ ok: false, error: 'room_action_rate_limited' }); replyMutation(setPlayerReady(socket.id, payload?.ready), reply); });
   socket.on('set_team', (payload, reply = () => {}) => { if (!allowRoomAction()) return reply({ ok: false, error: 'room_action_rate_limited' }); replyMutation(setPlayerTeam(socket.id, String(payload?.team ?? '').toUpperCase()), reply); });
   socket.on('start_game', (_payload, reply = () => {}) => { if (!allowRoomAction()) return reply({ ok: false, error: 'room_action_rate_limited' }); replyMutation(startRoom(socket.id), reply); });
-  socket.on('move_player', (payload, reply = () => {}) => replyTurnAction(moveActivePlayer6A(socket.id, payload?.direction), reply));
-  socket.on('jump_player', (payload, reply = () => {}) => replyTurnAction(jumpActivePlayer6A(socket.id, payload?.direction), reply));
+  socket.on('move_player', (payload, reply = () => {}) => replyTurnAction(moveActivePlayer6D(socket.id, payload?.direction), reply));
+  socket.on('jump_player', (payload, reply = () => {}) => replyTurnAction(jumpActivePlayer6D(socket.id, payload?.direction), reply));
   socket.on('set_aim', (payload, reply = () => {}) => replyTurnAction(setAim(socket.id, payload?.angle, payload?.power), reply));
-  socket.on('select_item', (payload, reply = () => {}) => replyTurnAction(selectItem6A(socket.id, payload?.slot), reply));
-  socket.on('fire_projectile', (_payload, reply = () => {}) => replyTurnAction(fireProjectile6A(socket.id), reply));
+  socket.on('select_item', (payload, reply = () => {}) => replyTurnAction(selectItem6D(socket.id, payload?.slot), reply));
+  socket.on('fire_projectile', (_payload, reply = () => {}) => replyTurnAction(fireProjectile6D(socket.id), reply));
   socket.on('toggle_afk_skip_vote', (_payload, reply = () => {}) => {
     const result = toggleAfkSkipVote(socket.id);
     if (!result.ok) return reply(result);
     let room = result.room;
-    if (result.skipped) room = advanceTurnIfDue6A(room.code, Date.now()) ?? room;
+    if (result.skipped) room = advanceTurnIfDue6D(room.code, Date.now()) ?? room;
     reply({ ok: true, room: publicState(room), skipped: result.skipped, voted: result.voted });
     emitRoomState(room);
   });
