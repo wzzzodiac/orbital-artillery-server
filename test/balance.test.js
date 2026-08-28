@@ -76,12 +76,16 @@ test('a newly spawned pickup is normalized exactly once by Phase 6E',()=>{
   room.pickups=[];
   room.lastPickupSpawnTurn=0;
   room.match.turnNumber=3;
-  publicRoomState6E(room);
+  const firstState=publicRoomState6E(room);
   assert.equal(room.pickups.length,1);
   const box=room.pickups[0];
   assert.equal(box.phase6ePoolRolled,true);
   assert.ok(PHASE6E_ITEM_POOL.some(item=>item.type===box.type));
+  assert.equal('phase6cPoolRolled' in firstState.pickups[0],false);
+  assert.equal('phase6dPoolRolled' in firstState.pickups[0],false);
+  assert.equal('phase6ePoolRolled' in firstState.pickups[0],false);
   const typeAfterFirstRoll=box.type;
-  publicRoomState6E(room);
+  const secondState=publicRoomState6E(room);
   assert.equal(box.type,typeAfterFirstRoll);
+  assert.equal('phase6ePoolRolled' in secondState.pickups[0],false);
 });
