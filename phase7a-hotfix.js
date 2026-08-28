@@ -1,5 +1,6 @@
 import {
   findRoomBySocket,
+  getRoom,
   removePlayer as removePlayerBase
 } from './rooms.js';
 import {
@@ -20,10 +21,11 @@ const GROUND_OFFSET = 8;
 const JUMP_APEX = 150;
 const MAX_VAULT_APEX = 850;
 const JUMP_CLEARANCE = 16;
-const BASIC_MIN_VISIBLE_MS = 3000;
-const BOX_WEAPON_MIN_VISIBLE_MS = 4000;
+const BASIC_MIN_VISIBLE_MS = 6000;
+const BOX_WEAPON_MIN_VISIBLE_MS = 7000;
 const CLUSTER_CHILD_DELAY_MS = 1000;
-const CLUSTER_CHILD_STAGGER_MS = 200;
+const CLUSTER_CHILD_STAGGER_MS = 250;
+const CLUSTER_CHILD_FLIGHT_MS = 2000;
 const NUKE_WARNING_MS = 5000;
 const NUKE_BEAM_MS = 5000;
 const NUKE_RESOLVE_BUFFER_MS = 1500;
@@ -93,6 +95,27 @@ function stopJumpAtTerrain(room, player, from, originalMotion, inventoryBefore){
   return false;
 }
 
+function ballisticPoint(v,seconds){
+  return {x:v.startX+Number(v.vx||0)*seconds+.5*Number(v.windAccel||0)*seconds*seconds,y:v.startY+Number(v.vy||0)*seconds+.5*Number(v.gravity||0)*seconds*seconds};
+}
+function correctTerrainImpactFace(room,v){
+  if(!v||v.impactReason!=='terrain'||!Number.isFinite(v.durationMs)||!Number.isFinite(v.startedAt))return false;
+  let hi=Math.max(.09,v.durationMs/1000),lo=Math.max(.081,hi-.06);
+  const solid=t=>{const p=ballisticPoint(v,t);return p.x>=0&&p.x<=WORLD_WIDTH&&surface(room,p.x)<WORLD_HEIGHT&&p.y>=surface(room,p.x);};
+  if(!solid(hi))return false;
+  while(lo>.081&&solid(lo))lo=Math.max(.081,lo-.04);
+  if(solid(lo))return false;
+  for(let i=0;i<16;i+=1){const mid=(lo+hi)/2;if(solid(mid))hi=mid;else lo=mid;}
+  const p=ballisticPoint(v,hi);
+  v.impactX=clamp(p.x,0,WORLD_WIDTH);
+  v.impactY=p.y;
+  v.durationMs=Math.max(220,Math.round(hi*1000));
+  v.impactAt=v.startedAt+v.durationMs;
+  if(Number.isFinite(v.resolveAt))v.resolveAt=Math.max(v.resolveAt,v.impactAt+900);
+  v.terrainImpactFaceCorrected=true;
+  return true;
+}
+
 function slowBallistic(v,minVisibleMs){
   if(!v||!Number.isFinite(v.startedAt)||!Number.isFinite(v.impactAt))return 0;
   const oldDuration=Math.max(1,v.impactAt-v.startedAt);
@@ -113,6 +136,8 @@ function paceProjectile(room){
   q.visualPacing7A=true;
   const type=q.weaponType||'basic';
   if(type==='airstrike')return;
+  correctTerrainImpactFace(room,q);
+  if(Array.isArray(q.volley))for(const v of q.volley)correctTerrainImpactFace(room,v);
   const minVisibleMs=BOX_PROJECTILE_TYPES.has(type)?BOX_WEAPON_MIN_VISIBLE_MS:BASIC_MIN_VISIBLE_MS;
   slowBallistic(q,minVisibleMs);
   if(type==='triple'&&Array.isArray(q.volley)){
@@ -120,7 +145,7 @@ function paceProjectile(room){
     q.specialResolveAt=Math.max(...q.volley.map(v=>v.impactAt));
     q.resolveAt=q.specialResolveAt+900;
   }else if(type==='cluster'){
-    if(Array.isArray(q.clusterImpacts))q.clusterImpacts=q.clusterImpacts.map((child,index)=>({...child,impactAt:q.impactAt+CLUSTER_CHILD_DELAY_MS+index*CLUSTER_CHILD_STAGGER_MS}));
+    if(Array.isArray(q.clusterImpacts))q.clusterImpacts=q.clusterImpacts.map((child,index)=>{const visualStartAt=q.impactAt+CLUSTER_CHILD_DELAY_MS+index*CLUSTER_CHILD_STAGGER_MS;return{...child,visualStartAt,impactAt:visualStartAt+CLUSTER_CHILD_FLIGHT_MS};});
     q.specialResolveAt=q.clusterImpacts?.length?Math.max(...q.clusterImpacts.map(v=>v.impactAt)):q.impactAt;
     q.resolveAt=q.specialResolveAt+900;
   }else if(type==='nuke'){
@@ -133,12 +158,37 @@ function paceProjectile(room){
   if(Number.isFinite(q.resolveAt))room.match.turnEndsAt=q.resolveAt;
 }
 
+function contendersByHp(room){return room.players.filter(p=>Number(p.hp??100)>0);}
+function shouldContinue(room){const contenders=contendersByHp(room);if(room.mode==='survival')return contenders.length>1;return new Set(contenders.map(p=>p.team)).size>1;}
+function normalizeAliveFromHp(room){for(const p of room.players){if(Number(p.hp??100)>0&&p.alive===false)p.alive=true;}}
+function clearPrematureResult(room){
+  if(!room)return;
+  normalizeAliveFromHp(room);
+  if(shouldContinue(room)&&room.match?.pendingResult)room.match.pendingResult=null;
+  if(shouldContinue(room)&&room.status==='finished'){
+    room.status='started';
+    room.match.result=null;
+    room.match.pendingResult=null;
+    room.match.finishedAt=null;
+    room.match.projectile=null;
+    room.match.activePlayerId=null;
+    room.match.turnEndsAt=Date.now();
+  }
+}
+
 export function publicRoomState7AHotfix(room){
+  clearPrematureResult(room);
   const state=basePublic(room);
-  state.qaHardening={jumpArcCollision:true,dynamicJumpVault:true,disconnectRemovesPlayer:true,basicMinProjectileFlightMs:BASIC_MIN_VISIBLE_MS,boxWeaponMinProjectileFlightMs:BOX_WEAPON_MIN_VISIBLE_MS,clusterChildDelayMs:CLUSTER_CHILD_DELAY_MS,nukeWarningMs:NUKE_WARNING_MS,nukeBeamMs:NUKE_BEAM_MS};
+  state.qaHardening={jumpArcCollision:true,dynamicJumpVault:true,disconnectRemovesPlayer:true,victoryRequiresHpEliminationOrExit:true,terrainFaceProjectileCollision:true,basicMinProjectileFlightMs:BASIC_MIN_VISIBLE_MS,boxWeaponMinProjectileFlightMs:BOX_WEAPON_MIN_VISIBLE_MS,clusterChildDelayMs:CLUSTER_CHILD_DELAY_MS,clusterChildFlightMs:CLUSTER_CHILD_FLIGHT_MS,nukeWarningMs:NUKE_WARNING_MS,nukeBeamMs:NUKE_BEAM_MS};
   return state;
 }
-export function advanceTurnIfDue7AHotfix(code,now=Date.now()){return baseAdvance(code,now);}
+export function advanceTurnIfDue7AHotfix(code,now=Date.now()){
+  const room=getRoom(code);
+  clearPrematureResult(room);
+  const changed=baseAdvance(code,now);
+  if(changed)clearPrematureResult(changed);
+  return changed;
+}
 export function moveActivePlayer7AHotfix(id,d){return baseMove(id,d);}
 export function jumpActivePlayer7AHotfix(id,d){
   const room=findRoomBySocket(id),player=room?.players.find(p=>p.id===id);
@@ -155,4 +205,4 @@ export function fireProjectile7AHotfix(id){const result=baseFire(id);if(result.o
 export function disconnectPlayer7AHotfix(socketId){return removePlayerBase(socketId);}
 export function rematchRoom7AHotfix(id,options={}){return baseRematch(id,options);}
 
-export const phase7aHotfixTestHooks=Object.freeze({surface,paceProjectile,stopJumpAtTerrain,requiredVaultApex});
+export const phase7aHotfixTestHooks=Object.freeze({surface,paceProjectile,stopJumpAtTerrain,requiredVaultApex,correctTerrainImpactFace,clearPrematureResult,shouldContinue});
