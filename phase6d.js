@@ -14,14 +14,16 @@ const NUKE_WEIGHT = 3;
 const PHASE6C_POOL_WEIGHT = 123;
 const FULL_POOL_WEIGHT = PHASE6C_POOL_WEIGHT + NUKE_WEIGHT;
 const NUKE_DAMAGE = 20;
-const NUKE_WARNING_MS = 850;
-const NUKE_BEAM_MS = 420;
-const NUKE_RESOLVE_BUFFER_MS = 1050;
-const NUKE_HALF_LENGTH = 520;
-const NUKE_BEAM_HALF_WIDTH = 88;
-const NUKE_CUT_RADIUS = 92;
-const NUKE_CUT_DEPTH = 2450;
-const NUKE_CUT_STEP = 115;
+const NUKE_WARNING_MS = 3000;
+const NUKE_BEAM_MS = 3000;
+const NUKE_RESOLVE_BUFFER_MS = 1500;
+const NUKE_HALF_LENGTH = 900;
+const NUKE_BEAM_HALF_WIDTH = 115;
+const NUKE_CUT_RADIUS = 145;
+const NUKE_CUT_DEPTH = 4200;
+const NUKE_CUT_STEP = 105;
+const FREE_JUMP_COOLDOWN_MS = 450;
+const FREE_JUMP_VISUAL_MS = 500;
 const GROUND_OFFSET = 8;
 const WORLD_WIDTH = 5000;
 const WORLD_HEIGHT = 5000;
@@ -53,6 +55,11 @@ function publicState(room){
   state.phase='6D';
   if(!state.itemPool.some(item=>item.type==='nuke')) state.itemPool=[...state.itemPool,{type:'nuke',label:'NUKE LASER',weight:NUKE_WEIGHT}];
   state.nukeRules={damage:NUKE_DAMAGE,weight:NUKE_WEIGHT,warningMs:NUKE_WARNING_MS,beamMs:NUKE_BEAM_MS,halfLength:NUKE_HALF_LENGTH,beamHalfWidth:NUKE_BEAM_HALF_WIDTH,knockback:false,fullFriendlyFire:true,selfDamage:true,pickups:'destroy'};
+  state.movementRules={freeDuringTurn:true,movementRadius:null,jumpsPerTurn:null,jumpCooldownMs:FREE_JUMP_COOLDOWN_MS,shotLocksMovement:true};
+  const active=room.players.find(p=>p.id===room.match?.activePlayerId);
+  const slot=active?.selectedItemSlot??1;
+  const selected=slot>1?active?.inventory?.[slot-2]:null;
+  state.spectatorAim={activePlayerId:room.match?.activePlayerId??null,angle:room.match?.aimAngle??45,power:room.match?.aimPower??55,selectedItemType:selected?.type??'basic'};
   if(state.match?.projectile?.weaponType==='nuke') state.match.projectile={...state.match.projectile,nukeBeam:state.match.projectile.nukeBeam?{...state.match.projectile.nukeBeam}:null};
   return state;
 }
@@ -64,8 +71,8 @@ function prepareNuke(room,q){
   const beamAt=targetLockedAt+NUKE_WARNING_MS;
   const ax=clamp(centerX-NUKE_HALF_LENGTH,30,WORLD_WIDTH-30);
   const bx=clamp(centerX+NUKE_HALF_LENGTH,30,WORLD_WIDTH-30);
-  const ay=clamp(centerY-650,80,WORLD_HEIGHT-80);
-  const by=clamp(centerY+650,80,WORLD_HEIGHT-80);
+  const ay=clamp(centerY-1050,80,WORLD_HEIGHT-80);
+  const by=clamp(centerY+1050,80,WORLD_HEIGHT-80);
   q.weaponType='nuke';
   q.targetX=centerX;
   q.targetY=centerY;
@@ -100,7 +107,7 @@ function applyNuke(room,q,now){
     room.arena.craters.push({id:`${q.id}-nuke-${index}`,x:cx,radius:NUKE_CUT_RADIUS,depth:NUKE_CUT_DEPTH,createdAt:now});
   }
 
-  room.pickups=(room.pickups??[]).filter(box=>distanceToSegment(box.x,box.y,ax,ay,bx,by)>NUKE_BEAM_HALF_WIDTH+35);
+  room.pickups=(room.pickups??[]).filter(box=>distanceToSegment(box.x,box.y,ax,ay,bx,by)>NUKE_BEAM_HALF_WIDTH+45);
 
   q.pendingVoidDeathIds=[];
   for(const player of room.players){
@@ -110,11 +117,11 @@ function applyNuke(room,q,now){
       q.pendingVoidDeathIds.push(player.id);
       const fromY=player.spawn.y;
       player.spawn={...player.spawn,y:WORLD_HEIGHT+120};
-      player.motion={type:'fall',startedAt:now,endsAt:Math.min(q.resolveAt-60,now+1200),fromX:player.spawn.x,fromY,toX:player.spawn.x,toY:WORLD_HEIGHT+120,apex:0};
+      player.motion={type:'fall',startedAt:now,endsAt:Math.min(q.resolveAt-60,now+1500),fromX:player.spawn.x,fromY,toX:player.spawn.x,toY:WORLD_HEIGHT+120,apex:0};
       continue;
     }
     const targetY=nextY-GROUND_OFFSET;
-    if(targetY>player.spawn.y+2){const fromY=player.spawn.y;player.spawn={...player.spawn,y:targetY};player.motion={type:'fall',startedAt:now,endsAt:Math.min(q.resolveAt-60,now+Math.min(900,Math.max(300,(targetY-fromY)*2.2))),fromX:player.spawn.x,fromY,toX:player.spawn.x,toY:targetY,apex:0};}
+    if(targetY>player.spawn.y+2){const fromY=player.spawn.y;player.spawn={...player.spawn,y:targetY};player.motion={type:'fall',startedAt:now,endsAt:Math.min(q.resolveAt-60,now+Math.min(1200,Math.max(350,(targetY-fromY)*2.2))),fromX:player.spawn.x,fromY,toX:player.spawn.x,toY:targetY,apex:0};}
   }
   return true;
 }
@@ -149,8 +156,35 @@ export function fireProjectile6D(socketId){
   return result;
 }
 
+function unlockMovementEnvelope(room){
+  if(!room?.match)return;
+  room.match.movementOriginX=WORLD_WIDTH/2;
+  room.match.movementRadius=WORLD_WIDTH;
+}
+
 export function publicRoomState6D(room){return publicState(room);}
 export function advanceTurnIfDue6D(code,now=Date.now()){const room=getRoom(code);if(room?.match?.projectile?.weaponType==='nuke')return advanceNuke(room,now);return baseAdvance(code,now);}
-export function moveActivePlayer6D(socketId,direction){return baseMove(socketId,direction);}
-export function jumpActivePlayer6D(socketId,direction){return baseJump(socketId,direction);}
+export function moveActivePlayer6D(socketId,direction){
+  const room=findRoomBySocket(socketId);
+  unlockMovementEnvelope(room);
+  const result=baseMove(socketId,direction);
+  if(result.ok&&result.room?.match){result.room.match.movementOriginX=WORLD_WIDTH/2;result.room.match.movementRadius=WORLD_WIDTH;result.room.match.jumpsRemaining=null;}
+  return result;
+}
+export function jumpActivePlayer6D(socketId,direction){
+  const room=findRoomBySocket(socketId);
+  if(!room)return{ok:false,error:'not_in_room'};
+  const player=room.players.find(p=>p.id===socketId);
+  const now=Date.now();
+  if(player?.lastFreeJumpAt&&now-player.lastFreeJumpAt<FREE_JUMP_COOLDOWN_MS)return{ok:false,error:'jump_cooldown'};
+  unlockMovementEnvelope(room);
+  if(room.match)room.match.jumpsRemaining=999999;
+  const result=baseJump(socketId,direction);
+  if(result.ok){
+    player.lastFreeJumpAt=now;
+    if(player.motion?.type==='jump')player.motion.endsAt=player.motion.startedAt+FREE_JUMP_VISUAL_MS;
+    if(result.room?.match){result.room.match.movementOriginX=WORLD_WIDTH/2;result.room.match.movementRadius=WORLD_WIDTH;result.room.match.jumpsRemaining=null;}
+  }
+  return result;
+}
 export function selectItem6D(socketId,slot){return baseSelect(socketId,slot);}
