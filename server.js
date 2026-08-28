@@ -33,17 +33,32 @@ import {
 import { isValidRoomCode, normalizePlayerName } from './validation.js';
 
 const connectionWindows = new Map();
+const pendingTransportRemovals = new Map();
+const TRANSPORT_RECOVERY_GRACE_MS = 15_000;
+const RECOVERABLE_DISCONNECT_REASONS = new Set(['transport close', 'transport error', 'ping timeout']);
+
 function clientIpFromRequest(req) { const forwarded = req.headers['x-forwarded-for']; if (typeof forwarded === 'string' && forwarded.length > 0) return forwarded.split(',')[0].trim(); return req.socket.remoteAddress || 'unknown'; }
 function allowConnectionAttempt(ip) { const now = Date.now(); const current = connectionWindows.get(ip); if (!current || now - current.startedAt >= 60_000) { connectionWindows.set(ip, { startedAt: now, count: 1 }); return true; } current.count += 1; return current.count <= CONFIG.connectionAttemptsPerMinute; }
+function cancelPendingTransportRemoval(socketId) { const timer = pendingTransportRemovals.get(socketId); if (timer) clearTimeout(timer); pendingTransportRemovals.delete(socketId); }
+function removeDisconnectedPlayer(socketId, reason = 'expired_transport_disconnect') {
+  cancelPendingTransportRemoval(socketId);
+  const removal = disconnectPlayer7AVisual(socketId);
+  if (removal?.room) emitRoomState(removal.room);
+  console.info(`player removed after disconnect: ${socketId} (${reason})`);
+}
 setInterval(() => { const cutoff = Date.now() - 120_000; for (const [ip, window] of connectionWindows) if (window.startedAt < cutoff) connectionWindows.delete(ip); }, 60_000).unref();
 
 let io;
 const httpServer = createServer((req, res) => {
-  if (req.url === '/health') { res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' }); res.end(JSON.stringify({ ok: true, service: 'orbital-artillery-server', phase: '7A.1-visual', rooms: roomStore.size, sockets: io?.engine?.clientsCount ?? 0 })); return; }
+  if (req.url === '/health') { res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' }); res.end(JSON.stringify({ ok: true, service: 'orbital-artillery-server', phase: '7A.1-visual-recovery', rooms: roomStore.size, sockets: io?.engine?.clientsCount ?? 0 })); return; }
   res.writeHead(404, { 'content-type': 'application/json; charset=utf-8' }); res.end(JSON.stringify({ error: 'not_found' }));
 });
 
-io = new SocketIOServer(httpServer, { cors: { origin: CONFIG.clientOrigin, methods: ['GET', 'POST'] }, allowRequest: (req, callback) => { const ip = clientIpFromRequest(req); if (io.engine.clientsCount >= CONFIG.maxConcurrentSockets) return callback('server_capacity_reached', false); if (!allowConnectionAttempt(ip)) return callback('connection_rate_limited', false); callback(null, true); } });
+io = new SocketIOServer(httpServer, {
+  cors: { origin: CONFIG.clientOrigin, methods: ['GET', 'POST'] },
+  connectionStateRecovery: { maxDisconnectionDuration: TRANSPORT_RECOVERY_GRACE_MS, skipMiddlewares: true },
+  allowRequest: (req, callback) => { const ip = clientIpFromRequest(req); if (io.engine.clientsCount >= CONFIG.maxConcurrentSockets) return callback('server_capacity_reached', false); if (!allowConnectionAttempt(ip)) return callback('connection_rate_limited', false); callback(null, true); }
+});
 function publicState(room) { ensureAfkVoteState(room); return publicRoomState7AVisual(room); }
 function emitRoomState(room) { io.to(room.code).emit('room_state', publicState(room)); }
 
@@ -60,7 +75,16 @@ setInterval(() => {
 }, 250).unref();
 
 io.on('connection', socket => {
-  console.info(`socket connected: ${socket.id}`);
+  cancelPendingTransportRemoval(socket.id);
+  const recoveredRoom = findRoomBySocket(socket.id);
+  if (socket.recovered && recoveredRoom) {
+    const recoveredPlayer = recoveredRoom.players.find(player => player.id === socket.id);
+    if (recoveredPlayer) recoveredPlayer.connected = true;
+    socket.join(recoveredRoom.code);
+    emitRoomState(recoveredRoom);
+    console.info(`socket recovered: ${socket.id} room=${recoveredRoom.code}`);
+  } else console.info(`socket connected: ${socket.id}`);
+
   let packetWindowStartedAt = Date.now(), packetCount = 0, lastActivityAt = Date.now(), roomActionsStartedAt = Date.now(), roomActionCount = 0;
   socket.use((packet, next) => { const now = Date.now(); lastActivityAt = now; if (now - packetWindowStartedAt >= 1_000) { packetWindowStartedAt = now; packetCount = 0; } packetCount += 1; if (packetCount > CONFIG.packetsPerSecond) { socket.disconnect(true); return; } next(); });
   function allowRoomAction() { const now = Date.now(); if (now - roomActionsStartedAt >= 60_000) { roomActionsStartedAt = now; roomActionCount = 0; } roomActionCount += 1; return roomActionCount <= 20; }
@@ -96,7 +120,25 @@ io.on('connection', socket => {
 
   const idleTimer = setInterval(() => { const room = findRoomBySocket(socket.id); const protectedByActiveMatch = room && (room.status === 'countdown' || room.status === 'started'); if (!protectedByActiveMatch && Date.now() - lastActivityAt >= CONFIG.idleSocketMinutes * 60_000) socket.disconnect(true); }, 60_000);
   idleTimer.unref();
-  socket.on('disconnect', reason => { clearInterval(idleTimer); const removal = disconnectPlayer7AVisual(socket.id); if (removal?.room) emitRoomState(removal.room); console.info(`socket disconnected: ${socket.id} (${reason})`); });
+  socket.on('disconnect', reason => {
+    clearInterval(idleTimer);
+    const room = findRoomBySocket(socket.id);
+    const player = room?.players.find(entry => entry.id === socket.id);
+    const activeMatch = room && (room.status === 'countdown' || room.status === 'started');
+    const recoverableTransportCut = activeMatch && RECOVERABLE_DISCONNECT_REASONS.has(reason);
+    if (recoverableTransportCut && player) {
+      player.connected = false;
+      cancelPendingTransportRemoval(socket.id);
+      const timer = setTimeout(() => removeDisconnectedPlayer(socket.id, 'transport_recovery_expired'), TRANSPORT_RECOVERY_GRACE_MS);
+      timer.unref?.();
+      pendingTransportRemovals.set(socket.id, timer);
+      emitRoomState(room);
+      console.info(`socket transport interrupted: ${socket.id} (${reason}); recovery grace ${TRANSPORT_RECOVERY_GRACE_MS}ms`);
+      return;
+    }
+    removeDisconnectedPlayer(socket.id, reason);
+    console.info(`socket disconnected: ${socket.id} (${reason})`);
+  });
 });
 
 httpServer.listen(CONFIG.port, '0.0.0.0', () => console.info(`Orbital Artillery server listening on :${CONFIG.port}`));
