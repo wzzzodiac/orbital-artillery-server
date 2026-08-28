@@ -20,6 +20,8 @@ const AIR_STRIKE_FALL_MS=4000;
 const AIR_STRIKE_STAGGER_MS=233;
 const AIR_STRIKE_START_RISE=900;
 const PROJECTILE_LAUNCH_HOLD_MS=567;
+const VEHICLE_HIT_RADIUS=52;
+const HIT_SCAN_DT=.01;
 const NUKE_DAMAGE=20;
 const NUKE_SCAR_RADIUS=118;
 const NUKE_SCAR_DEPTH=299;
@@ -28,6 +30,41 @@ const NUKE_SCAR_MARGIN=55;
 
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 function distanceToSegment(px,py,ax,ay,bx,by){const dx=bx-ax,dy=by-ay,len2=dx*dx+dy*dy;if(len2<=.0001)return Math.hypot(px-ax,py-ay);const t=clamp(((px-ax)*dx+(py-ay)*dy)/len2,0,1);return Math.hypot(px-(ax+t*dx),py-(ay+t*dy));}
+function ballisticPoint(v,seconds){return{x:v.startX+Number(v.vx||0)*seconds+.5*Number(v.windAccel||0)*seconds*seconds,y:v.startY+Number(v.vy||0)*seconds+.5*Number(v.gravity||0)*seconds*seconds};}
+function expandOneProjectileHit(room,v,ownerId){
+  if(!v||!Number.isFinite(v.durationMs)||!Number.isFinite(v.startedAt))return false;
+  const maxSeconds=Math.max(0,v.durationMs/1000);
+  for(let t=HIT_SCAN_DT;t<=maxSeconds;t+=HIT_SCAN_DT){
+    const p=ballisticPoint(v,t);
+    for(const target of room.players){
+      if(target.alive===false||!target.spawn||(target.id===ownerId&&t<.14))continue;
+      if(Math.hypot(p.x-target.spawn.x,p.y-(target.spawn.y-10))>VEHICLE_HIT_RADIUS)continue;
+      const durationMs=Math.max(220,Math.round(t*1000));
+      if(durationMs>=v.durationMs&&v.hitPlayerId)return false;
+      v.impactReason='player';v.hitPlayerId=target.id;v.impactX=p.x;v.impactY=p.y;v.durationMs=durationMs;v.impactAt=v.startedAt+durationMs;v.expandedVehicleHitbox7A=true;
+      return true;
+    }
+  }
+  return false;
+}
+function expandProjectileHitbox(room,q){
+  if(!q||['airstrike','nuke'].includes(q.weaponType))return false;
+  let changed=false;
+  if(q.weaponType==='triple'&&Array.isArray(q.volley)){
+    for(const v of q.volley)changed=expandOneProjectileHit(room,v,q.ownerPlayerId)||changed;
+    if(changed){q.specialResolveAt=Math.max(...q.volley.map(v=>v.impactAt));q.resolveAt=q.specialResolveAt+900;room.match.turnEndsAt=q.resolveAt;}
+    return changed;
+  }
+  changed=expandOneProjectileHit(room,q,q.ownerPlayerId);
+  if(!changed)return false;
+  if(q.weaponType==='cluster'){
+    const offsets=[-180,-90,0,90,180];
+    q.clusterImpacts=offsets.map((dx,index)=>{const x=clamp(q.impactX+dx,30,4970),visualStartAt=q.impactAt+667+index*167;return{x,y:phase7aHotfixTestHooks.surface(room,x),index,visualStartAt,impactAt:visualStartAt+1333};});
+    q.specialResolveAt=Math.max(...q.clusterImpacts.map(v=>v.impactAt));q.resolveAt=q.specialResolveAt+900;
+  }else q.resolveAt=q.impactAt+900;
+  room.match.turnEndsAt=q.resolveAt;
+  return true;
+}
 
 function shiftTime(value,delay){return Number.isFinite(value)?value+delay:value;}
 function delayAuthoritativeProjectile(room,q,delay=PROJECTILE_LAUNCH_HOLD_MS){
@@ -55,87 +92,51 @@ function paceAirStrike(room,q){
     const impactAt=visualStartAt+AIR_STRIKE_FALL_MS;
     return {...shell,startY:Math.max(80,shell.y-AIR_STRIKE_START_RISE),visualStartAt,impactAt};
   });
-  if(q.airStrikeShells.length){
-    q.impactAt=q.airStrikeShells[0].impactAt;
-    q.specialResolveAt=q.airStrikeShells.at(-1).impactAt;
-    q.resolveAt=q.specialResolveAt+900;
-    room.match.turnEndsAt=q.resolveAt;
-  }
+  if(q.airStrikeShells.length){q.impactAt=q.airStrikeShells[0].impactAt;q.specialResolveAt=q.airStrikeShells.at(-1).impactAt;q.resolveAt=q.specialResolveAt+900;room.match.turnEndsAt=q.resolveAt;}
 }
 
 function applySafeNuke(room,q,now){
   if(!q||q.weaponType!=='nuke'||q.nukeApplied||!q.nukeBeam)return false;
-  q.nukeApplied=true;
-  q.pendingVoidDeathIds=[];
-  const {ax,ay,bx,by}=q.nukeBeam;
-  const halfWidth=q.nukeBeam.halfWidth??115;
-
+  q.nukeApplied=true;q.pendingVoidDeathIds=[];
+  const {ax,ay,bx,by}=q.nukeBeam;const halfWidth=q.nukeBeam.halfWidth??115;
   for(const player of room.players){
     if(player.alive===false||!player.spawn)continue;
-    const d=distanceToSegment(player.spawn.x,player.spawn.y-10,ax,ay,bx,by);
-    if(d>halfWidth)continue;
-    let damage=NUKE_DAMAGE;
-    if(player.shield){damage=Math.max(1,Math.ceil(damage*player.shield.factor));player.shield=null;}
-    player.hp=Math.max(0,(player.hp??100)-damage);
-    player.lastDamage={amount:damage,at:now,sourcePlayerId:q.ownerPlayerId};
-    if(player.hp<=0)player.alive=false;
+    const d=distanceToSegment(player.spawn.x,player.spawn.y-10,ax,ay,bx,by);if(d>halfWidth)continue;
+    let damage=NUKE_DAMAGE;if(player.shield){damage=Math.max(1,Math.ceil(damage*player.shield.factor));player.shield=null;}
+    player.hp=Math.max(0,(player.hp??100)-damage);player.lastDamage={amount:damage,at:now,sourcePlayerId:q.ownerPlayerId};if(player.hp<=0)player.alive=false;
   }
-
   const halfLength=Math.max(1,Math.abs(bx-ax)/2);
   for(let x=(q.targetX??((ax+bx)/2))-halfLength,index=0;x<=(q.targetX??((ax+bx)/2))+halfLength;x+=NUKE_SCAR_STEP,index+=1){
-    const cx=clamp(x,30,4970);
-    const cy=phase7aHotfixTestHooks.surface(room,cx);
-    if(cy>=WORLD_HEIGHT-1)continue;
-    if(distanceToSegment(cx,cy,ax,ay,bx,by)>halfWidth+NUKE_SCAR_MARGIN)continue;
+    const cx=clamp(x,30,4970),cy=phase7aHotfixTestHooks.surface(room,cx);if(cy>=WORLD_HEIGHT-1)continue;if(distanceToSegment(cx,cy,ax,ay,bx,by)>halfWidth+NUKE_SCAR_MARGIN)continue;
     room.arena.craters.push({id:`${q.id}-nuke-scar-${index}`,x:cx,radius:NUKE_SCAR_RADIUS,depth:NUKE_SCAR_DEPTH,createdAt:now});
   }
-
   room.pickups=(room.pickups??[]).filter(box=>distanceToSegment(box.x,box.y,ax,ay,bx,by)>halfWidth+45);
-
   for(const player of room.players){
     if(player.alive===false||!player.spawn)continue;
-    const nextY=phase7aHotfixTestHooks.surface(room,player.spawn.x);
-    if(nextY>=WORLD_HEIGHT-1)continue;
-    const targetY=nextY-GROUND_OFFSET;
-    if(targetY<=player.spawn.y+2)continue;
-    const fromY=player.spawn.y;
-    player.spawn={...player.spawn,y:Math.round(targetY)};
-    player.motion={type:'fall',startedAt:now,endsAt:now+Math.min(1100,Math.max(350,(targetY-fromY)*2.2)),fromX:player.spawn.x,fromY,toX:player.spawn.x,toY:Math.round(targetY),apex:0};
+    const nextY=phase7aHotfixTestHooks.surface(room,player.spawn.x);if(nextY>=WORLD_HEIGHT-1)continue;
+    const targetY=nextY-GROUND_OFFSET;if(targetY<=player.spawn.y+2)continue;
+    const fromY=player.spawn.y;player.spawn={...player.spawn,y:Math.round(targetY)};player.motion={type:'fall',startedAt:now,endsAt:now+Math.min(1100,Math.max(350,(targetY-fromY)*2.2)),fromX:player.spawn.x,fromY,toX:player.spawn.x,toY:Math.round(targetY),apex:0};
   }
   return true;
 }
 
 export function publicRoomState7AVisual(room){
   const state=basePublic(room);
-  state.visualHardening={
-    projectileTrail:'full-flight',
-    projectileAuthority:'single-authoritative-timeline',
-    projectileLaunchHoldMs:PROJECTILE_LAUNCH_HOLD_MS,
-    airStrikeFallMs:AIR_STRIKE_FALL_MS,
-    airStrikeStaggerMs:AIR_STRIKE_STAGGER_MS,
-    projectilePlaybackSpeedMultiplier:1.5,
-    nukeTerrainMode:'diagonal-scar',
-    nukeScarDepth:NUKE_SCAR_DEPTH,
-    nukeDamage:NUKE_DAMAGE
-  };
+  state.visualHardening={projectileTrail:'full-flight',projectileAuthority:'single-authoritative-timeline',projectileLaunchHoldMs:PROJECTILE_LAUNCH_HOLD_MS,vehicleHitRadius:VEHICLE_HIT_RADIUS,airStrikeFallMs:AIR_STRIKE_FALL_MS,airStrikeStaggerMs:AIR_STRIKE_STAGGER_MS,projectilePlaybackSpeedMultiplier:1.5,nukeTerrainMode:'diagonal-scar',nukeScarDepth:NUKE_SCAR_DEPTH,nukeDamage:NUKE_DAMAGE};
   return state;
 }
 
 export function fireProjectile7AVisual(id){
-  const result=baseFire(id);
-  if(!result.ok)return result;
+  const result=baseFire(id);if(!result.ok)return result;
   const q=result.room.match?.projectile;
   if(q?.weaponType==='airstrike')paceAirStrike(result.room,q);
-  else delayAuthoritativeProjectile(result.room,q);
+  else{expandProjectileHitbox(result.room,q);delayAuthoritativeProjectile(result.room,q);}
   return result;
 }
 
 export function advanceTurnIfDue7AVisual(code,now=Date.now()){
   const room=getRoom(code),q=room?.match?.projectile;
-  if(room&&q?.weaponType==='nuke'&&!q.nukeApplied&&now>=q.beamAt){
-    const before=phase7a1TestHooks.snapshot(room);
-    if(applySafeNuke(room,q,now))phase7a1TestHooks.observe(room,before,{sourceId:q.ownerPlayerId,weaponType:'nuke'});
-  }
+  if(room&&q?.weaponType==='nuke'&&!q.nukeApplied&&now>=q.beamAt){const before=phase7a1TestHooks.snapshot(room);if(applySafeNuke(room,q,now))phase7a1TestHooks.observe(room,before,{sourceId:q.ownerPlayerId,weaponType:'nuke'});}
   return baseAdvance(code,now);
 }
 
@@ -147,4 +148,4 @@ export function setTerrain7AVisual(id,t){return baseTerrain(id,t);}
 export function disconnectPlayer7AVisual(id){return baseDisconnect(id);}
 export function rematchRoom7AVisual(id,options={}){return baseRematch(id,options);}
 
-export const phase7aVisualTestHooks=Object.freeze({paceAirStrike,applySafeNuke,distanceToSegment,delayAuthoritativeProjectile});
+export const phase7aVisualTestHooks=Object.freeze({paceAirStrike,applySafeNuke,distanceToSegment,delayAuthoritativeProjectile,expandProjectileHitbox,expandOneProjectileHit});
