@@ -19,6 +19,7 @@ const GROUND_OFFSET=8;
 const AIR_STRIKE_FALL_MS=6000;
 const AIR_STRIKE_STAGGER_MS=350;
 const AIR_STRIKE_START_RISE=900;
+const PROJECTILE_LAUNCH_HOLD_MS=850;
 const NUKE_DAMAGE=20;
 const NUKE_SCAR_RADIUS=118;
 const NUKE_SCAR_DEPTH=230;
@@ -27,6 +28,23 @@ const NUKE_SCAR_MARGIN=55;
 
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 function distanceToSegment(px,py,ax,ay,bx,by){const dx=bx-ax,dy=by-ay,len2=dx*dx+dy*dy;if(len2<=.0001)return Math.hypot(px-ax,py-ay);const t=clamp(((px-ax)*dx+(py-ay)*dy)/len2,0,1);return Math.hypot(px-(ax+t*dx),py-(ay+t*dy));}
+
+function shiftTime(value,delay){return Number.isFinite(value)?value+delay:value;}
+function delayAuthoritativeProjectile(room,q,delay=PROJECTILE_LAUNCH_HOLD_MS){
+  if(!q||q.weaponType==='airstrike'||q.authoritativeVisualDelay7A)return;
+  q.authoritativeVisualDelay7A=delay;
+  q.startedAt=shiftTime(q.startedAt,delay);
+  q.impactAt=shiftTime(q.impactAt,delay);
+  q.resolveAt=shiftTime(q.resolveAt,delay);
+  q.specialResolveAt=shiftTime(q.specialResolveAt,delay);
+  q.targetLockedAt=shiftTime(q.targetLockedAt,delay);
+  q.warningUntil=shiftTime(q.warningUntil,delay);
+  q.beamAt=shiftTime(q.beamAt,delay);
+  q.beamUntil=shiftTime(q.beamUntil,delay);
+  if(Array.isArray(q.volley))q.volley=q.volley.map(v=>({...v,startedAt:shiftTime(v.startedAt,delay),impactAt:shiftTime(v.impactAt,delay),resolveAt:shiftTime(v.resolveAt,delay)}));
+  if(Array.isArray(q.clusterImpacts))q.clusterImpacts=q.clusterImpacts.map(v=>({...v,visualStartAt:shiftTime(v.visualStartAt,delay),impactAt:shiftTime(v.impactAt,delay)}));
+  if(Number.isFinite(q.resolveAt))room.match.turnEndsAt=q.resolveAt;
+}
 
 function paceAirStrike(room,q){
   if(!q||q.weaponType!=='airstrike'||q.airVisualPacing7A)return;
@@ -90,10 +108,11 @@ function applySafeNuke(room,q,now){
 export function publicRoomState7AVisual(room){
   const state=basePublic(room);
   state.visualHardening={
-    projectileTrail:'full-flight-from-muzzle',
+    projectileTrail:'full-flight',
+    projectileAuthority:'single-authoritative-timeline',
+    projectileLaunchHoldMs:PROJECTILE_LAUNCH_HOLD_MS,
     airStrikeFallMs:AIR_STRIKE_FALL_MS,
     airStrikeStaggerMs:AIR_STRIKE_STAGGER_MS,
-    airStrikeOrigin:'top-edge',
     nukeTerrainMode:'diagonal-scar',
     nukeScarDepth:NUKE_SCAR_DEPTH,
     nukeDamage:NUKE_DAMAGE
@@ -103,7 +122,10 @@ export function publicRoomState7AVisual(room){
 
 export function fireProjectile7AVisual(id){
   const result=baseFire(id);
-  if(result.ok&&result.room.match?.projectile?.weaponType==='airstrike')paceAirStrike(result.room,result.room.match.projectile);
+  if(!result.ok)return result;
+  const q=result.room.match?.projectile;
+  if(q?.weaponType==='airstrike')paceAirStrike(result.room,q);
+  else delayAuthoritativeProjectile(result.room,q);
   return result;
 }
 
@@ -124,4 +146,4 @@ export function setTerrain7AVisual(id,t){return baseTerrain(id,t);}
 export function disconnectPlayer7AVisual(id){return baseDisconnect(id);}
 export function rematchRoom7AVisual(id,options={}){return baseRematch(id,options);}
 
-export const phase7aVisualTestHooks=Object.freeze({paceAirStrike,applySafeNuke,distanceToSegment});
+export const phase7aVisualTestHooks=Object.freeze({paceAirStrike,applySafeNuke,distanceToSegment,delayAuthoritativeProjectile});
