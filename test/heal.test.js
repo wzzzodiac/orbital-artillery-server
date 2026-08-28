@@ -77,10 +77,10 @@ test('Heal cannot be wasted at full HP', () => {
   assert.equal(player.selectedItemSlot, 2);
 });
 
-test('public Phase 6C.1 state advertises Heal rules and pool weight', () => {
+test('public Phase 6C.2 state keeps advertising Heal rules and pool weight', () => {
   const room = makeStartedRoom();
   const state = publicRoomState6A(room);
-  assert.equal(state.phase, '6C.1');
+  assert.equal(state.phase, '6C.2');
   assert.equal(state.healRules.amount, 30);
   assert.equal(state.healRules.consumesTurn, false);
   const heal = state.itemPool.find(item => item.type === 'heal');
