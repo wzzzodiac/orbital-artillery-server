@@ -495,7 +495,7 @@ export function removePlayer(socketId) {
   else if (room.match?.turnOrder) {
     room.match.turnOrder = room.match.turnOrder.filter(id => id !== socketId);
     const result = resultFor(room); if (result) finishMatch(room, result);
-    else if (wasActive) { const nextIndex = Math.min(Math.max(previousTurnIndex, 0), Math.max(room.match.turnOrder.length - 1, 0)); beginTurn(room, nextIndex, Date.now()); }
+    else if (wasActive) { const nextIndex = room.match.turnOrder.length ? Math.max(previousTurnIndex, 0) % room.match.turnOrder.length : 0; beginTurn(room, nextIndex, Date.now()); }
     else if (removedOrderIndex >= 0 && removedOrderIndex < previousTurnIndex) room.match.turnIndex = Math.max(0, previousTurnIndex - 1);
   }
   if (room.camera?.targetPlayerId === socketId) room.camera.targetPlayerId = room.match?.activePlayerId ?? room.players.find(player => player.alive !== false)?.id ?? room.players[0].id;
