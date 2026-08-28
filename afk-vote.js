@@ -23,7 +23,8 @@ function markTurnSkipped(room, vote, now) {
     playerName: skippedPlayer?.name ?? null,
     skippedTurnNumber: room.match.turnNumber ?? 0,
     at: now,
-    expiresAt: now + SKIP_NOTICE_MS
+    expiresAt: now + SKIP_NOTICE_MS,
+    previousTurnEndsAt: room.match.turnEndsAt ?? null
   };
   room.match.turnEndsAt = now;
   return true;
@@ -66,10 +67,22 @@ export function ensureAfkVoteState(room, now = Date.now()) {
 
 export function registerActiveTurnActivity(room, socketId, now = Date.now()) {
   if (!room?.match || room.status !== 'started' || room.match.activePlayerId !== socketId) return false;
+
+  const currentTurn = room.match.turnNumber ?? 0;
+  const existingVote = room.match.afkSkipVote;
+  if (existingVote?.turnNumber === currentTurn) existingVote.votes = [];
+
+  const pendingSkip = room.match.lastAfkSkip;
+  if (pendingSkip?.skippedTurnNumber === currentTurn) {
+    const previousDeadline = Number(pendingSkip.previousTurnEndsAt);
+    if (Number.isFinite(previousDeadline) && previousDeadline > now) room.match.turnEndsAt = previousDeadline;
+    room.match.lastAfkSkip = null;
+  }
+
   const vote = ensureAfkVoteState(room, now);
   if (!vote) return false;
   vote.lastActivityAt = now;
-  if ((vote.votes?.length ?? 0) > 0) vote.votes = [];
+  vote.votes = [];
   return true;
 }
 
