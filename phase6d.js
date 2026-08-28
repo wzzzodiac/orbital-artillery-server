@@ -19,6 +19,7 @@ const NUKE_BEAM_MS = 3000;
 const NUKE_RESOLVE_BUFFER_MS = 1500;
 const NUKE_HALF_LENGTH = 900;
 const NUKE_BEAM_HALF_WIDTH = 115;
+const NUKE_BEAM_VERTICAL_HALF_SPAN = 320;
 const NUKE_CUT_RADIUS = 145;
 const NUKE_CUT_DEPTH = 4200;
 const NUKE_CUT_STEP = 105;
@@ -54,8 +55,9 @@ function publicState(room){
   if(rollNukeForNewPickup(room))state=basePublic(room);
   state.phase='6D';
   if(!state.itemPool.some(item=>item.type==='nuke')) state.itemPool=[...state.itemPool,{type:'nuke',label:'NUKE LASER',weight:NUKE_WEIGHT}];
-  state.nukeRules={damage:NUKE_DAMAGE,weight:NUKE_WEIGHT,warningMs:NUKE_WARNING_MS,beamMs:NUKE_BEAM_MS,halfLength:NUKE_HALF_LENGTH,beamHalfWidth:NUKE_BEAM_HALF_WIDTH,knockback:false,fullFriendlyFire:true,selfDamage:true,pickups:'destroy'};
+  state.nukeRules={damage:NUKE_DAMAGE,weight:NUKE_WEIGHT,warningMs:NUKE_WARNING_MS,beamMs:NUKE_BEAM_MS,halfLength:NUKE_HALF_LENGTH,beamHalfWidth:NUKE_BEAM_HALF_WIDTH,beamVerticalHalfSpan:NUKE_BEAM_VERTICAL_HALF_SPAN,knockback:false,fullFriendlyFire:true,selfDamage:true,pickups:'destroy'};
   state.movementRules={freeDuringTurn:true,movementRadius:null,jumpsPerTurn:null,jumpCooldownMs:FREE_JUMP_COOLDOWN_MS,shotLocksMovement:true};
+  if(state.match)state.match={...state.match,movementOriginX:null,movementRadius:null,jumpsRemaining:null};
   const active=room.players.find(p=>p.id===room.match?.activePlayerId);
   const slot=active?.selectedItemSlot??1;
   const selected=slot>1?active?.inventory?.[slot-2]:null;
@@ -71,8 +73,8 @@ function prepareNuke(room,q){
   const beamAt=targetLockedAt+NUKE_WARNING_MS;
   const ax=clamp(centerX-NUKE_HALF_LENGTH,30,WORLD_WIDTH-30);
   const bx=clamp(centerX+NUKE_HALF_LENGTH,30,WORLD_WIDTH-30);
-  const ay=clamp(centerY-1050,80,WORLD_HEIGHT-80);
-  const by=clamp(centerY+1050,80,WORLD_HEIGHT-80);
+  const ay=clamp(centerY-NUKE_BEAM_VERTICAL_HALF_SPAN,80,WORLD_HEIGHT-80);
+  const by=clamp(centerY+NUKE_BEAM_VERTICAL_HALF_SPAN,80,WORLD_HEIGHT-80);
   q.weaponType='nuke';
   q.targetX=centerX;
   q.targetY=centerY;
@@ -161,14 +163,32 @@ function unlockMovementEnvelope(room){
   room.match.movementOriginX=WORLD_WIDTH/2;
   room.match.movementRadius=WORLD_WIDTH;
 }
+function traversalSnapshot(room){
+  if(!room?.match)return null;
+  return{movementOriginX:room.match.movementOriginX,movementRadius:room.match.movementRadius,jumpsRemaining:room.match.jumpsRemaining};
+}
+function restoreTraversal(room,snapshot){
+  if(!room?.match||!snapshot)return;
+  room.match.movementOriginX=snapshot.movementOriginX;
+  room.match.movementRadius=snapshot.movementRadius;
+  room.match.jumpsRemaining=snapshot.jumpsRemaining;
+}
+function exposeFreeTraversal(room){
+  if(!room?.match)return;
+  room.match.movementOriginX=WORLD_WIDTH/2;
+  room.match.movementRadius=WORLD_WIDTH;
+  room.match.jumpsRemaining=null;
+}
 
 export function publicRoomState6D(room){return publicState(room);}
 export function advanceTurnIfDue6D(code,now=Date.now()){const room=getRoom(code);if(room?.match?.projectile?.weaponType==='nuke')return advanceNuke(room,now);return baseAdvance(code,now);}
 export function moveActivePlayer6D(socketId,direction){
   const room=findRoomBySocket(socketId);
+  const snapshot=traversalSnapshot(room);
   unlockMovementEnvelope(room);
   const result=baseMove(socketId,direction);
-  if(result.ok&&result.room?.match){result.room.match.movementOriginX=WORLD_WIDTH/2;result.room.match.movementRadius=WORLD_WIDTH;result.room.match.jumpsRemaining=null;}
+  if(!result.ok)restoreTraversal(room,snapshot);
+  else exposeFreeTraversal(result.room);
   return result;
 }
 export function jumpActivePlayer6D(socketId,direction){
@@ -177,14 +197,14 @@ export function jumpActivePlayer6D(socketId,direction){
   const player=room.players.find(p=>p.id===socketId);
   const now=Date.now();
   if(player?.lastFreeJumpAt&&now-player.lastFreeJumpAt<FREE_JUMP_COOLDOWN_MS)return{ok:false,error:'jump_cooldown'};
+  const snapshot=traversalSnapshot(room);
   unlockMovementEnvelope(room);
   if(room.match)room.match.jumpsRemaining=999999;
   const result=baseJump(socketId,direction);
-  if(result.ok){
-    player.lastFreeJumpAt=now;
-    if(player.motion?.type==='jump')player.motion.endsAt=player.motion.startedAt+FREE_JUMP_VISUAL_MS;
-    if(result.room?.match){result.room.match.movementOriginX=WORLD_WIDTH/2;result.room.match.movementRadius=WORLD_WIDTH;result.room.match.jumpsRemaining=null;}
-  }
+  if(!result.ok){restoreTraversal(room,snapshot);return result;}
+  player.lastFreeJumpAt=now;
+  if(player.motion?.type==='jump')player.motion.endsAt=player.motion.startedAt+FREE_JUMP_VISUAL_MS;
+  exposeFreeTraversal(result.room);
   return result;
 }
 export function selectItem6D(socketId,slot){return baseSelect(socketId,slot);}
