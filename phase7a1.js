@@ -42,10 +42,12 @@ function recordDamage(room,before,after,sourceId,weaponType){
     if(dropped>0&&!voided){
       t.stats[p.id].damageReceived+=dropped;
       if(sourceId&&t.stats[sourceId]){
-        t.stats[sourceId].damageDealt+=dropped;
-        t.stats[sourceId].biggestHit=Math.max(t.stats[sourceId].biggestHit,dropped);
-        if(sourceId!==p.id){t.contributors[p.id]??={};t.contributors[p.id][sourceId]=(t.contributors[p.id][sourceId]??0)+dropped;}
-        pushEvent(room,'damage',`${nameOf(room,sourceId)} dealt ${dropped} damage to ${p.name}.`,{sourcePlayerId:sourceId,targetPlayerId:p.id,amount:dropped,weaponType});
+        if(sourceId!==p.id){
+          t.stats[sourceId].damageDealt+=dropped;
+          t.stats[sourceId].biggestHit=Math.max(t.stats[sourceId].biggestHit,dropped);
+          t.contributors[p.id]??={};t.contributors[p.id][sourceId]=(t.contributors[p.id][sourceId]??0)+dropped;
+          pushEvent(room,'damage',`${nameOf(room,sourceId)} dealt ${dropped} damage to ${p.name}.`,{sourcePlayerId:sourceId,targetPlayerId:p.id,amount:dropped,weaponType});
+        }else pushEvent(room,'self_damage',`${p.name} took ${dropped} self-damage.`,{sourcePlayerId:sourceId,targetPlayerId:p.id,amount:dropped,weaponType});
       }
     }
     if(b.alive!==false&&a.alive===false&&!t.deathAttribution[p.id]){
