@@ -14,7 +14,30 @@ function requiredVotesFor(count) {
   return count > 0 ? Math.floor(count / 2) + 1 : 0;
 }
 
-export function ensureAfkVoteState(room) {
+function markTurnSkipped(room, vote, now) {
+  if (!room?.match || !vote) return false;
+  if (room.match.lastAfkSkip?.skippedTurnNumber === (room.match.turnNumber ?? 0)) return true;
+  const skippedPlayer = room.players.find(player => player.id === room.match.activePlayerId);
+  room.match.lastAfkSkip = {
+    playerId: room.match.activePlayerId,
+    playerName: skippedPlayer?.name ?? null,
+    skippedTurnNumber: room.match.turnNumber ?? 0,
+    at: now,
+    expiresAt: now + SKIP_NOTICE_MS
+  };
+  room.match.turnEndsAt = now;
+  return true;
+}
+
+function maybePassVote(room, vote, now = Date.now()) {
+  if (!room?.match || !vote || room.match.projectile) return false;
+  if (now < vote.eligibleAt) return false;
+  if ((room.match.turnEndsAt ?? now) - now > AFK_VOTE_REMAINING_MS) return false;
+  if (vote.requiredVotes <= 0 || (vote.votes?.length ?? 0) < vote.requiredVotes) return false;
+  return markTurnSkipped(room, vote, now);
+}
+
+export function ensureAfkVoteState(room, now = Date.now()) {
   if (!room?.match || room.status !== 'started' || !room.match.activePlayerId) return null;
 
   const turnNumber = room.match.turnNumber ?? 0;
@@ -25,11 +48,11 @@ export function ensureAfkVoteState(room) {
   if (!existing || existing.turnNumber !== turnNumber) {
     room.match.afkSkipVote = {
       turnNumber,
-      eligibleAt: (room.match.turnStartedAt ?? Date.now()) + AFK_VOTE_REMAINING_MS,
+      eligibleAt: (room.match.turnStartedAt ?? now) + AFK_VOTE_REMAINING_MS,
       votes: [],
       requiredVotes,
       eligibleVoters: eligibleIds.length,
-      lastActivityAt: room.match.turnStartedAt ?? Date.now()
+      lastActivityAt: room.match.turnStartedAt ?? now
     };
     return room.match.afkSkipVote;
   }
@@ -37,12 +60,13 @@ export function ensureAfkVoteState(room) {
   existing.votes = (existing.votes ?? []).filter(id => eligibleIds.includes(id));
   existing.requiredVotes = requiredVotes;
   existing.eligibleVoters = eligibleIds.length;
+  maybePassVote(room, existing, now);
   return existing;
 }
 
 export function registerActiveTurnActivity(room, socketId, now = Date.now()) {
   if (!room?.match || room.status !== 'started' || room.match.activePlayerId !== socketId) return false;
-  const vote = ensureAfkVoteState(room);
+  const vote = ensureAfkVoteState(room, now);
   if (!vote) return false;
   vote.lastActivityAt = now;
   if ((vote.votes?.length ?? 0) > 0) vote.votes = [];
@@ -59,7 +83,7 @@ export function toggleAfkSkipVote(socketId, now = Date.now()) {
   const voter = room.players.find(player => player.id === socketId);
   if (!voter || voter.alive === false) return { ok: false, error: 'afk_vote_ineligible' };
 
-  const vote = ensureAfkVoteState(room);
+  const vote = ensureAfkVoteState(room, now);
   if (!vote || now < vote.eligibleAt || (room.match.turnEndsAt ?? now) - now > AFK_VOTE_REMAINING_MS) {
     return { ok: false, error: 'afk_vote_locked' };
   }
@@ -75,18 +99,6 @@ export function toggleAfkSkipVote(socketId, now = Date.now()) {
   }
   vote.votes = [...votes];
 
-  const skipped = vote.requiredVotes > 0 && vote.votes.length >= vote.requiredVotes;
-  if (skipped) {
-    const skippedPlayer = room.players.find(player => player.id === room.match.activePlayerId);
-    room.match.lastAfkSkip = {
-      playerId: room.match.activePlayerId,
-      playerName: skippedPlayer?.name ?? null,
-      skippedTurnNumber: room.match.turnNumber ?? 0,
-      at: now,
-      expiresAt: now + SKIP_NOTICE_MS
-    };
-    room.match.turnEndsAt = now;
-  }
-
+  const skipped = maybePassVote(room, vote, now);
   return { ok: true, room, skipped, voted };
 }
