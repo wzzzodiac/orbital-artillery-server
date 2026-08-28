@@ -20,12 +20,12 @@ function equip(room,type,label){
   return {id,p};
 }
 
-test('Air Strike reserves six seconds per shell for slow full-screen descent',()=>{
+test('Air Strike reserves four seconds per shell for 1.5x full-screen descent',()=>{
   const room=started();const {id}=equip(room,'airstrike','AIR STRIKE');
   const r=fireProjectile7AVisual(id);assert.equal(r.ok,true);
   const q=room.match.projectile;assert.equal(q.weaponType,'airstrike');assert.equal(q.airStrikeShells.length,7);
-  for(const shell of q.airStrikeShells){assert.equal(shell.impactAt-shell.visualStartAt,6000);assert.ok(shell.startY<=shell.y-800||shell.startY===80);}
-  for(let i=1;i<q.airStrikeShells.length;i++)assert.equal(q.airStrikeShells[i].visualStartAt-q.airStrikeShells[i-1].visualStartAt,350);
+  for(const shell of q.airStrikeShells){assert.equal(shell.impactAt-shell.visualStartAt,4000);assert.ok(shell.startY<=shell.y-800||shell.startY===80);}
+  for(let i=1;i<q.airStrikeShells.length;i++)assert.equal(q.airStrikeShells[i].visualStartAt-q.airStrikeShells[i-1].visualStartAt,233);
   assert.equal(room.match.turnEndsAt,q.resolveAt);
 });
 
