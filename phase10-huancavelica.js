@@ -29,42 +29,54 @@ const MAX_LINK_JUMP=420;
 const MAX_PLATFORM_RISE=1050;
 const EDGE_MARGIN=24;
 
-// Alpine Ridge v4: physical composition follows the approved concept image.
-// Two tall side towers frame a large open void, with a compact symmetric ladder
-// of floating islands in the center. Every explicit link stays inside the
-// existing 420 horizontal / 1050 vertical traversal envelope.
+// Alpine Ridge v5 — traced from the approved concept composition.
+// The big side masses are deliberately built from overlapping cliff shelves so
+// the renderer reads them as tall continuous rock towers. The middle stays open:
+// a crown, two upper wings, two small high steps, one upper-center island,
+// mirrored mid transitions, a center support island and four low stepping rocks.
+// Geometry is nudged only where necessary to keep every route within the existing
+// traversal envelope; no teleport or new mobility rule is used.
 const HUANCAVELICA_PLATFORMS=Object.freeze([
-  {id:'left-cliff-top',x1:0,x2:1260,y:1500,depth:900,kind:'cliff',links:['left-cliff-upper','high-step-left']},
-  {id:'left-cliff-upper',x1:380,x2:980,y:2100,depth:550,kind:'cliff',links:['left-cliff-top','left-cliff-mid','mid-left-high']},
-  {id:'left-cliff-mid',x1:0,x2:870,y:2800,depth:850,kind:'cliff',links:['left-cliff-upper','left-cliff-lower','mid-left-high']},
-  {id:'left-cliff-lower',x1:300,x2:1120,y:3500,depth:800,kind:'cliff',links:['left-cliff-mid','left-cliff-bottom','mid-left-low']},
-  {id:'left-cliff-bottom',x1:0,x2:850,y:4250,depth:700,kind:'cliff',links:['left-cliff-lower','left-bottom-exit']},
-  {id:'left-bottom-exit',x1:820,x2:1420,y:4660,depth:300,kind:'island',links:['left-cliff-bottom','low-step-left']},
+  // LEFT TOWER — concept shoulder, main cap, shelves and bottom exit.
+  {id:'left-shoulder-high',x1:900,x2:1260,y:1435,depth:300,kind:'cliff',links:['left-cliff-top','high-step-left']},
+  {id:'left-cliff-top',x1:0,x2:980,y:1665,depth:860,kind:'cliff',links:['left-shoulder-high','left-upper-ledge']},
+  {id:'left-upper-ledge',x1:440,x2:980,y:2150,depth:500,kind:'cliff',links:['left-cliff-top','left-cliff-mid','mid-left-high']},
+  {id:'left-cliff-mid',x1:0,x2:430,y:2780,depth:780,kind:'cliff',links:['left-upper-ledge','left-transition']},
+  {id:'left-transition',x1:450,x2:830,y:3190,depth:390,kind:'cliff',links:['left-cliff-mid','left-lower-ledge','mid-left-high']},
+  {id:'left-lower-ledge',x1:0,x2:480,y:3820,depth:690,kind:'cliff',links:['left-transition','left-bottom-ledge']},
+  {id:'left-bottom-ledge',x1:500,x2:920,y:4350,depth:390,kind:'cliff',links:['left-lower-ledge','left-bottom-exit']},
+  {id:'left-bottom-exit',x1:780,x2:1410,y:4890,depth:270,kind:'island',links:['left-bottom-ledge','low-step-left']},
 
-  {id:'right-cliff-top',x1:3740,x2:5000,y:1500,depth:900,kind:'cliff',links:['right-cliff-upper','high-step-right']},
-  {id:'right-cliff-upper',x1:4020,x2:4620,y:2100,depth:550,kind:'cliff',links:['right-cliff-top','right-cliff-mid','mid-right-high']},
-  {id:'right-cliff-mid',x1:4130,x2:5000,y:2800,depth:850,kind:'cliff',links:['right-cliff-upper','right-cliff-lower','mid-right-high']},
-  {id:'right-cliff-lower',x1:3880,x2:4700,y:3500,depth:800,kind:'cliff',links:['right-cliff-mid','right-cliff-bottom','mid-right-low']},
-  {id:'right-cliff-bottom',x1:4150,x2:5000,y:4250,depth:700,kind:'cliff',links:['right-cliff-lower','right-bottom-exit']},
-  {id:'right-bottom-exit',x1:3580,x2:4180,y:4660,depth:300,kind:'island',links:['right-cliff-bottom','low-step-right']},
+  // RIGHT TOWER — physical mirror of the left tower.
+  {id:'right-shoulder-high',x1:3740,x2:4100,y:1435,depth:300,kind:'cliff',links:['right-cliff-top','high-step-right']},
+  {id:'right-cliff-top',x1:4020,x2:5000,y:1665,depth:860,kind:'cliff',links:['right-shoulder-high','right-upper-ledge']},
+  {id:'right-upper-ledge',x1:4020,x2:4560,y:2150,depth:500,kind:'cliff',links:['right-cliff-top','right-cliff-mid','mid-right-high']},
+  {id:'right-cliff-mid',x1:4570,x2:5000,y:2780,depth:780,kind:'cliff',links:['right-upper-ledge','right-transition']},
+  {id:'right-transition',x1:4170,x2:4550,y:3190,depth:390,kind:'cliff',links:['right-cliff-mid','right-lower-ledge','mid-right-high']},
+  {id:'right-lower-ledge',x1:4520,x2:5000,y:3820,depth:690,kind:'cliff',links:['right-transition','right-bottom-ledge']},
+  {id:'right-bottom-ledge',x1:4080,x2:4500,y:4350,depth:390,kind:'cliff',links:['right-lower-ledge','right-bottom-exit']},
+  {id:'right-bottom-exit',x1:3590,x2:4220,y:4890,depth:270,kind:'island',links:['right-bottom-ledge','low-step-right']},
 
-  {id:'top-center',x1:2200,x2:2800,y:650,depth:420,kind:'island',links:['upper-left','upper-right']},
-  {id:'upper-left',x1:1770,x2:2220,y:1080,depth:280,kind:'island',links:['top-center','high-step-left']},
-  {id:'upper-right',x1:2780,x2:3230,y:1080,depth:280,kind:'island',links:['top-center','high-step-right']},
-  {id:'high-step-left',x1:1450,x2:1850,y:1620,depth:240,kind:'island',links:['upper-left','left-cliff-top','center-upper']},
-  {id:'high-step-right',x1:3150,x2:3550,y:1620,depth:240,kind:'island',links:['upper-right','right-cliff-top','center-upper']},
-  {id:'center-upper',x1:2150,x2:2850,y:2050,depth:390,kind:'island',links:['high-step-left','high-step-right','mid-left-high','mid-right-high']},
+  // UPPER CROWN — follows the concept's red-route silhouette.
+  {id:'top-center',x1:2180,x2:2980,y:675,depth:430,kind:'island',links:['upper-left','upper-right']},
+  {id:'upper-left',x1:1780,x2:2260,y:1130,depth:300,kind:'island',links:['top-center','high-step-left']},
+  {id:'upper-right',x1:2740,x2:3220,y:1130,depth:300,kind:'island',links:['top-center','high-step-right']},
+  {id:'high-step-left',x1:1480,x2:1870,y:1650,depth:250,kind:'island',links:['upper-left','left-shoulder-high','center-upper']},
+  {id:'high-step-right',x1:3130,x2:3520,y:1650,depth:250,kind:'island',links:['upper-right','right-shoulder-high','center-upper']},
+  {id:'center-upper',x1:2160,x2:2960,y:2000,depth:400,kind:'island',links:['high-step-left','high-step-right','mid-left-high','mid-right-high']},
 
-  {id:'mid-left-high',x1:1250,x2:1850,y:2750,depth:430,kind:'island',links:['left-cliff-upper','left-cliff-mid','center-upper','mid-left-low']},
-  {id:'mid-right-high',x1:3150,x2:3750,y:2750,depth:430,kind:'island',links:['right-cliff-upper','right-cliff-mid','center-upper','mid-right-low']},
-  {id:'mid-left-low',x1:1500,x2:2050,y:3250,depth:400,kind:'island',links:['mid-left-high','left-cliff-lower','center-mid','low-step-left']},
-  {id:'mid-right-low',x1:2950,x2:3500,y:3250,depth:400,kind:'island',links:['mid-right-high','right-cliff-lower','center-mid','low-step-right']},
-  {id:'center-mid',x1:2100,x2:2900,y:3520,depth:420,kind:'island',links:['mid-left-low','mid-right-low','low-step-left','low-step-right']},
+  // MIDDLE TRANSITIONS — separated islands, not a filled block wall.
+  {id:'mid-left-high',x1:1230,x2:1740,y:2750,depth:430,kind:'island',links:['left-upper-ledge','left-transition','center-upper','mid-left-low']},
+  {id:'mid-right-high',x1:3260,x2:3770,y:2750,depth:430,kind:'island',links:['right-upper-ledge','right-transition','center-upper','mid-right-low']},
+  {id:'mid-left-low',x1:1560,x2:2070,y:3020,depth:390,kind:'island',links:['mid-left-high','center-mid','low-step-left']},
+  {id:'mid-right-low',x1:2930,x2:3440,y:3020,depth:390,kind:'island',links:['mid-right-high','center-mid','low-step-right']},
+  {id:'center-mid',x1:2110,x2:2960,y:3450,depth:430,kind:'island',links:['mid-left-low','mid-right-low','low-step-left','low-step-right']},
 
-  {id:'low-step-left',x1:1700,x2:2050,y:4050,depth:260,kind:'island',links:['mid-left-low','center-mid','left-bottom-exit','bottom-step-left']},
-  {id:'low-step-right',x1:2950,x2:3300,y:4050,depth:260,kind:'island',links:['mid-right-low','center-mid','right-bottom-exit','bottom-step-right']},
-  {id:'bottom-step-left',x1:2050,x2:2320,y:4520,depth:260,kind:'island',links:['low-step-left','bottom-step-right']},
-  {id:'bottom-step-right',x1:2680,x2:2950,y:4520,depth:260,kind:'island',links:['low-step-right','bottom-step-left']}
+  // LOWER VOID STEPS — the four small rocks visible in the concept.
+  {id:'low-step-left',x1:1730,x2:2125,y:4015,depth:270,kind:'island',links:['mid-left-low','center-mid','left-bottom-exit','bottom-step-left']},
+  {id:'low-step-right',x1:2875,x2:3270,y:4015,depth:270,kind:'island',links:['mid-right-low','center-mid','right-bottom-exit','bottom-step-right']},
+  {id:'bottom-step-left',x1:2100,x2:2430,y:4495,depth:260,kind:'island',links:['low-step-left','bottom-step-right']},
+  {id:'bottom-step-right',x1:2570,x2:2900,y:4495,depth:260,kind:'island',links:['low-step-right','bottom-step-left']}
 ]);
 
 const PLATFORM_BY_ID=new Map(HUANCAVELICA_PLATFORMS.map(p=>[p.id,p]));
@@ -138,12 +150,12 @@ function advanceOnHuancavelica(code,now=Date.now()){const room=getRoom(code);con
 
 function decoratePublicState(room,state){const presets=[...(state?.terrainPresets??[])];if(!presets.some(entry=>entry.id===HUANCAVELICA_ID))presets.push({id:HUANCAVELICA_ID,name:HUANCAVELICA_NAME});state.terrainPresets=presets;if(isHuancavelica(room)){installHuancavelicaArena(room);state=basePublicRoomState9(room);state.terrainPresets=presets;state.terrainPreset=HUANCAVELICA_ID;state.arena={...(state.arena??{}),terrainPreset:HUANCAVELICA_ID,terrainName:HUANCAVELICA_NAME,phase10Theme:HUANCAVELICA_ID,collisionModel:'multilayer-platforms-v1',platforms:publicPlatforms(room),voidFloor:true,legacyCollisionBase:COLLISION_BASE};state.players=(state.players??[]).map(p=>({...p,phase10PlatformId:room.players.find(source=>source.id===p.id)?.phase10PlatformId??null}));state.phase10Map={id:HUANCAVELICA_ID,name:HUANCAVELICA_NAME,visualTheme:'bright-alpine-floating-islands',collisionModel:'multilayer-platforms-v1',platformCount:HUANCAVELICA_PLATFORMS.length,allPrimaryPlatformsReachableByLinks:true,freeMovement:true,normalJumpDistance:NORMAL_JUMP_DISTANCE,adaptiveMaxLinkDistance:MAX_LINK_JUMP,experimental:true};}return state;}
 export function publicRoomState9(room){if(isHuancavelica(room))installHuancavelicaArena(room);return decoratePublicState(room,basePublicRoomState9(room));}
-export function setTerrain9(id,terrain){const requested=String(terrain??'').toLowerCase();if(requested===HUANCAVELICA_ID){const result=baseSetTerrain9(id,COLLISION_BASE);if(result?.ok){result.room.phase10TerrainAlias=HUANCAVELICA_ID;result.room.phase10MapRevision='10c-alpine-ridge-v4-concept-match';for(const player of result.room.players??[]){player.ready=false;player.phase10PlatformId=null;}}return result;}const room=findRoomBySocket(id);if(room){room.phase10TerrainAlias=null;for(const player of room.players??[])player.phase10PlatformId=null;}return baseSetTerrain9(id,requested);}
+export function setTerrain9(id,terrain){const requested=String(terrain??'').toLowerCase();if(requested===HUANCAVELICA_ID){const result=baseSetTerrain9(id,COLLISION_BASE);if(result?.ok){result.room.phase10TerrainAlias=HUANCAVELICA_ID;result.room.phase10MapRevision='10c-alpine-ridge-v5-concept-trace';for(const player of result.room.players??[]){player.ready=false;player.phase10PlatformId=null;}}return result;}const room=findRoomBySocket(id);if(room){room.phase10TerrainAlias=null;for(const player of room.players??[])player.phase10PlatformId=null;}return baseSetTerrain9(id,requested);}
 export function moveActivePlayer9(id,direction){const room=findRoomBySocket(id);return isHuancavelica(room)?moveOnHuancavelica(id,direction):baseMoveActivePlayer9(id,direction);}
 export function jumpActivePlayer9(id,direction){const room=findRoomBySocket(id);return isHuancavelica(room)?jumpOnHuancavelica(id,direction):baseJumpActivePlayer9(id,direction);}
 export function fireProjectile9(id){const room=findRoomBySocket(id);return isHuancavelica(room)?fireOnHuancavelica(id):baseFireProjectile9(id);}
 export function advanceTurnIfDue9(code,now=Date.now()){return advanceOnHuancavelica(code,now);}
-export function rematchRoom9(id,options={}){const room=findRoomBySocket(id),keepAlias=room?.phase10TerrainAlias===HUANCAVELICA_ID&&!options?.randomMap;const result=baseRematchRoom9(id,options);if(result?.ok){result.room.phase10TerrainAlias=keepAlias?HUANCAVELICA_ID:null;result.room.phase10MapRevision=keepAlias?'10c-alpine-ridge-v4-concept-match':null;for(const player of result.room.players??[])player.phase10PlatformId=null;if(keepAlias)installHuancavelicaArena(result.room);}return result;}
+export function rematchRoom9(id,options={}){const room=findRoomBySocket(id),keepAlias=room?.phase10TerrainAlias===HUANCAVELICA_ID&&!options?.randomMap;const result=baseRematchRoom9(id,options);if(result?.ok){result.room.phase10TerrainAlias=keepAlias?HUANCAVELICA_ID:null;result.room.phase10MapRevision=keepAlias?'10c-alpine-ridge-v5-concept-trace':null;for(const player of result.room.players??[])player.phase10PlatformId=null;if(keepAlias)installHuancavelicaArena(result.room);}return result;}
 
 export {disconnectPlayer9,phase9AirPickupTestHooks,phase9TestHooks,phase9TraversalTestHooks,selectItem9,setAim9};
 export const phase10HuancavelicaTestHooks=Object.freeze({HUANCAVELICA_ID,HUANCAVELICA_NAME,COLLISION_BASE,HUANCAVELICA_PLATFORMS,decoratePublicState,installHuancavelicaArena,platformSurface,topPlatformAtX,nearestPlatformForPoint,firstPlatformImpact,adjustProjectileToPlatforms});
