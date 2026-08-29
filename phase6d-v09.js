@@ -16,7 +16,9 @@ const HEAVY_RADIUS=320;
 const TRIPLE_DAMAGE_PER_HIT=10;
 const CLUSTER_MAIN_DAMAGE=10;
 const CLUSTER_SUBHIT_DAMAGE=5;
+const CLUSTER_SUBHIT_RADIUS=150;
 const AIR_STRIKE_DAMAGE_PER_HIT=5;
+const AIR_STRIKE_RADIUS=165;
 const VEHICLE_HIT_RADIUS=51;
 const HEAL_AMOUNT=20;
 const SHIELD_FACTOR=.5;
@@ -62,11 +64,14 @@ function applyCorrectedHp(room,q,damageByPlayer,now,{consumeShield=true}={}){
   room.match.pendingResult=resultFor(room);return changed;
 }
 
+function explosionDamage(distance,maxDamage,radius){
+  if(!Number.isFinite(distance)||distance>radius)return 0;
+  return clamp(Math.max(1,Math.round(maxDamage*(1-distance/radius))),1,maxDamage);
+}
 function radialDamage(q,maxDamage,radius,{directMax=false}={}){
   const out={},snap=q.v09CombatSnapshot;if(!snap)return out;
   for(const [id,spawn] of Object.entries(snap.spawn)){
-    if(!spawn||snap.alive[id]===false)continue;const d=Math.hypot(spawn.x-q.impactX,(spawn.y-10)-q.impactY);if(d>radius)continue;
-    let damage=Math.max(1,Math.round(maxDamage*(1-d/radius)));if(directMax&&q.hitPlayerId===id)damage=maxDamage;out[id]=clamp(damage,1,maxDamage);
+    if(!spawn||snap.alive[id]===false)continue;const d=Math.hypot(spawn.x-q.impactX,(spawn.y-10)-q.impactY);const damage=explosionDamage(d,maxDamage,radius);if(!damage)continue;if(directMax&&q.hitPlayerId===id)out[id]=maxDamage;else out[id]=damage;
   }
   return out;
 }
@@ -74,7 +79,14 @@ function tripleDamage(q){const out={};for(const shot of q.volley??[]){if(shot?.i
 function clusterDamage(q){
   const out={},snap=q.v09CombatSnapshot;if(!snap)return out;
   if(q.impactReason==='player'&&q.hitPlayerId&&snap.alive[q.hitPlayerId]!==false)out[q.hitPlayerId]=(out[q.hitPlayerId]??0)+CLUSTER_MAIN_DAMAGE;
-  for(const impact of q.clusterImpacts??[]){if(Number(impact?.y)>=5000)continue;for(const [id,spawn] of Object.entries(snap.spawn)){if(!spawn||snap.alive[id]===false)continue;const d=Math.hypot(spawn.x-impact.x,(spawn.y-10)-impact.y);if(d<=VEHICLE_HIT_RADIUS)out[id]=(out[id]??0)+CLUSTER_SUBHIT_DAMAGE;}}
+  for(const impact of q.clusterImpacts??[]){
+    if(Number(impact?.y)>=5000)continue;
+    for(const [id,spawn] of Object.entries(snap.spawn)){
+      if(!spawn||snap.alive[id]===false)continue;
+      const d=Math.hypot(spawn.x-impact.x,(spawn.y-10)-impact.y),damage=explosionDamage(d,CLUSTER_SUBHIT_DAMAGE,CLUSTER_SUBHIT_RADIUS);
+      if(damage)out[id]=(out[id]??0)+damage;
+    }
+  }
   return out;
 }
 function correctResolvedBallistic(room,q,now){
@@ -89,9 +101,9 @@ function newlyAppliedAirShells(q,before){const appliedBefore=new Set(before??[])
 function correctAirStrike(room,q,beforeHp,beforeApplied,now){
   const shells=newlyAppliedAirShells(q,beforeApplied);if(!shells.length)return false;const snap=q.v09CombatSnapshot;if(!snap)return false;const shieldHits=new Set(q.v09ShieldHitPlayerIds??[]);
   for(const player of room.players){
-    if(snap.alive[player.id]===false||!player.spawn||isVoidDeath(player))continue;const reference=snap.spawn[player.id]??player.spawn;let hits=0;
-    for(const shell of shells){const distance=Math.hypot(reference.x-shell.x,(reference.y-10)-shell.y);if(distance<=VEHICLE_HIT_RADIUS)hits+=1;}
-    const startHp=beforeHp[player.id];if(startHp==null)continue;const hadShield=Boolean(snap.shield[player.id]),raw=hits*AIR_STRIKE_DAMAGE_PER_HIT;if(raw>0&&hadShield)shieldHits.add(player.id);
+    if(snap.alive[player.id]===false||!player.spawn||isVoidDeath(player))continue;const reference=snap.spawn[player.id]??player.spawn;let raw=0;
+    for(const shell of shells){const distance=Math.hypot(reference.x-shell.x,(reference.y-10)-shell.y);raw+=explosionDamage(distance,AIR_STRIKE_DAMAGE_PER_HIT,AIR_STRIKE_RADIUS);}
+    const startHp=beforeHp[player.id];if(startHp==null)continue;const hadShield=Boolean(snap.shield[player.id]);if(raw>0&&hadShield)shieldHits.add(player.id);
     const damage=raw>0?(hadShield?Math.max(1,Math.ceil(raw*SHIELD_FACTOR)):raw):0;player.hp=Math.max(0,startHp-damage);player.alive=player.hp>0;if(damage>0)player.lastDamage={amount:damage,at:now,sourcePlayerId:q.ownerPlayerId};
     const allApplied=(q.airStrikeShells??[]).every(shell=>shell.applied);if(hadShield)player.shield=allApplied&&shieldHits.has(player.id)?null:copyShield(snap.shield[player.id]);
   }
@@ -106,8 +118,8 @@ export function advanceTurnIfDue6DV09(code,now=Date.now()){
   const changed=baseAdvance(code,now),target=changed??room;if(!target||!q)return changed;if(q.weaponType==='airstrike')correctAirStrike(target,q,beforeHp,beforeApplied,now);else correctResolvedBallistic(target,q,now);return changed??target;
 }
 export function publicRoomState6DV09(room){
-  const state=basePublic(room);state.v09CombatBalance={version:'0.9.2-beta',maxHp:MAX_HP,basicMaxDamage:BASIC_DAMAGE,heavyMaxDamage:HEAVY_DAMAGE,tripleDamagePerDirectHit:TRIPLE_DAMAGE_PER_HIT,clusterMainDirectHitDamage:CLUSTER_MAIN_DAMAGE,clusterSubhitDirectDamage:CLUSTER_SUBHIT_DAMAGE,airStrikeDamagePerDirectHit:AIR_STRIKE_DAMAGE_PER_HIT,nukeDamage:20,healAmount:HEAL_AMOUNT,shieldFactor:SHIELD_FACTOR,shieldDuration:'one complete incoming attack',vehicleHitRadius:VEHICLE_HIT_RADIUS};
-  if(Array.isArray(state.itemPool))state.itemPool=state.itemPool.map(item=>item.type==='heal'?{...item,label:'HEAL +20'}:item);if(state.healRules)state.healRules={...state.healRules,amount:HEAL_AMOUNT};if(state.airStrikeRules)state.airStrikeRules={...state.airStrikeRules,damagePerShell:AIR_STRIKE_DAMAGE_PER_HIT,directHitRadius:VEHICLE_HIT_RADIUS};return state;
+  const state=basePublic(room);state.v09CombatBalance={version:'0.9.7-pre-release',maxHp:MAX_HP,basicMaxDamage:BASIC_DAMAGE,heavyMaxDamage:HEAVY_DAMAGE,tripleDamagePerDirectHit:TRIPLE_DAMAGE_PER_HIT,clusterMainDirectHitDamage:CLUSTER_MAIN_DAMAGE,clusterSubhitMaxDamage:CLUSTER_SUBHIT_DAMAGE,clusterSubhitExplosionRadius:CLUSTER_SUBHIT_RADIUS,airStrikeMaxDamagePerShell:AIR_STRIKE_DAMAGE_PER_HIT,airStrikeExplosionRadius:AIR_STRIKE_RADIUS,nukeDamage:20,healAmount:HEAL_AMOUNT,shieldFactor:SHIELD_FACTOR,shieldDuration:'one complete incoming attack',vehicleHitRadius:VEHICLE_HIT_RADIUS};
+  if(Array.isArray(state.itemPool))state.itemPool=state.itemPool.map(item=>item.type==='heal'?{...item,label:'HEAL +20'}:item);if(state.healRules)state.healRules={...state.healRules,amount:HEAL_AMOUNT};if(state.airStrikeRules)state.airStrikeRules={...state.airStrikeRules,damagePerShell:AIR_STRIKE_DAMAGE_PER_HIT,radius:AIR_STRIKE_RADIUS,damageModel:'per-shell radial falloff'};return state;
 }
 export function moveActivePlayer6DV09(id,d){return baseMove(id,d);}
 export function jumpActivePlayer6DV09(id,d){return baseJump(id,d);}
