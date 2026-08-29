@@ -1,19 +1,19 @@
 import { randomInt } from 'node:crypto';
 import {
-  advanceTurnIfDue6D as baseAdvance,
-  fireProjectile6D as baseFire,
-  jumpActivePlayer6D as baseJump,
-  moveActivePlayer6D as baseMove,
-  publicRoomState6D as basePublic,
-  selectItem6D as baseSelect
-} from './phase6d.js';
+  advanceTurnIfDue6DV09 as baseAdvance,
+  fireProjectile6DV09 as baseFire,
+  jumpActivePlayer6DV09 as baseJump,
+  moveActivePlayer6DV09 as baseMove,
+  publicRoomState6DV09 as basePublic,
+  selectItem6DV09 as baseSelect
+} from './phase6d-v09.js';
 
 export const PHASE6E_ITEM_POOL = Object.freeze([
   Object.freeze({ type:'heavy', label:'HEAVY BOMB', weight:25 }),
   Object.freeze({ type:'triple', label:'TRIPLE SHOT', weight:20 }),
   Object.freeze({ type:'cluster', label:'CLUSTER BOMB', weight:20 }),
   Object.freeze({ type:'shield', label:'SHIELD', weight:12 }),
-  Object.freeze({ type:'heal', label:'HEAL +30', weight:12 }),
+  Object.freeze({ type:'heal', label:'HEAL +20', weight:12 }),
   Object.freeze({ type:'airstrike', label:'AIR STRIKE', weight:8 }),
   Object.freeze({ type:'nuke', label:'NUKE LASER', weight:3 })
 ]);
@@ -67,7 +67,7 @@ function publicState(room){
     maxPickups:2,
     freeMovement:true,
     jumpCooldownMs:450,
-    note:'Phase 6E baseline balance; manual gameplay can still justify later tuning.'
+    note:'v0.9 beta balance baseline; manual gameplay can still justify later tuning.'
   };
   return state;
 }
