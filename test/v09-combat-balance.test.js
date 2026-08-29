@@ -22,13 +22,16 @@ function actors(room){
 }
 function equip(player,type,label){player.inventory=[{type,label},null];player.selectedItemSlot=2;}
 
-test('v0.9 public combat contract exposes the new damage, heal, shield and hitbox values',()=>{
+test('v0.9.1 public combat contract exposes the current damage, heal, shield and hitbox values',()=>{
   const room=started();
   const state=publicRoomState6DV09(room),b=state.v09CombatBalance;
+  assert.equal(b.version,'0.9.1-beta');
   assert.equal(b.maxHp,100);
   assert.equal(b.basicMaxDamage,10);
   assert.equal(b.heavyMaxDamage,20);
   assert.equal(b.tripleDamagePerDirectHit,10);
+  assert.equal(b.clusterMainDirectHitDamage,10);
+  assert.equal(b.clusterSubhitDirectDamage,5);
   assert.equal(b.airStrikeDamagePerDirectHit,5);
   assert.equal(b.nukeDamage,20);
   assert.equal(b.healAmount,20);
@@ -84,6 +87,23 @@ test('Triple counts only direct projectile hits and Shield protects the complete
   assert.equal(target.hp,90,'two direct hits = 20 raw, Shield halves the whole attack to 10');
   assert.equal(target.lastDamage.amount,10);
   assert.equal(target.shield,null);
+});
+
+test('Cluster deals 10 for the main direct hit plus 5 for each subimpact that reaches the vehicle hitbox',()=>{
+  const room=started(),{shooter,target}=actors(room);
+  target.hp=100;equip(shooter,'cluster','CLUSTER BOMB');
+  const result=fireProjectile6DV09(shooter.id);assert.equal(result.ok,true);
+  const q=room.match.projectile,now=Date.now();
+  q.impactReason='player';q.hitPlayerId=target.id;q.impactX=target.spawn.x;q.impactY=target.spawn.y-10;
+  q.impactAt=now-1;q.specialResolveAt=now;q.resolveAt=now+900;room.match.turnEndsAt=q.resolveAt;
+  q.clusterImpacts=[
+    {index:0,x:target.spawn.x,y:target.spawn.y-10,impactAt:now},
+    {index:1,x:target.spawn.x+30,y:target.spawn.y-10,impactAt:now},
+    {index:2,x:target.spawn.x+200,y:target.spawn.y-10,impactAt:now}
+  ];
+  advanceTurnIfDue6DV09(room.code,now);
+  assert.equal(target.hp,80,'main 10 + two direct subhits at 5 each = 20');
+  assert.equal(target.lastDamage.amount,20);
 });
 
 test('Air Strike deals 5 for each shell that directly reaches the vehicle hitbox',()=>{
