@@ -1,13 +1,13 @@
 import { randomInt } from 'node:crypto';
 import { findRoomBySocket, getRoom, setAim, setTerrainPreset, startRoom } from './rooms.js';
 import {
-  advanceTurnIfDue6E as baseAdvance,
-  fireProjectile6E as baseFire,
-  jumpActivePlayer6E as baseJump,
-  moveActivePlayer6E as baseMove,
-  publicRoomState6E as basePublic,
-  selectItem6E as baseSelect
-} from './phase6e.js';
+  advanceTurnIfDue6DV09 as baseAdvance,
+  fireProjectile6DV09 as baseFire,
+  jumpActivePlayer6DV09 as baseJump,
+  moveActivePlayer6DV09 as baseMove,
+  publicRoomState6DV09 as basePublic,
+  selectItem6DV09 as baseSelect
+} from './phase6d-v09.js';
 
 const TERRAIN_IDS=['rolling','terraces','twinpeaks','basin','brokenridge','islands','canyon'];
 const EVENT_LIMIT=36;
@@ -31,5 +31,4 @@ export function fireProjectile7A1(id){const room=findRoomBySocket(id),before=sna
 export function setTerrain7A1(id,preset){if(preset!=='random')return setTerrainPreset(id,preset);const room=findRoomBySocket(id);if(!room)return{ok:false,error:'not_in_room'};if(room.status!=='lobby')return{ok:false,error:'room_already_started'};if(room.hostId!==id)return{ok:false,error:'host_only'};const choices=TERRAIN_IDS.filter(x=>x!==room.terrainPreset);room.terrainPreset=choices[randomInt(choices.length)];for(const p of room.players)p.ready=false;return{ok:true,room};}
 export function rematchRoom7A1(id,{randomMap=false}={}){const room=findRoomBySocket(id);if(!room)return{ok:false,error:'not_in_room'};if(room.hostId!==id)return{ok:false,error:'host_only'};if(room.status!=='finished')return{ok:false,error:'match_not_finished'};if(randomMap){const choices=TERRAIN_IDS.filter(x=>x!==room.terrainPreset);room.terrainPreset=choices[randomInt(choices.length)];}room.status='lobby';room.arena=null;room.match=null;room.camera=null;room.pickups=[];room.lastPickupSpawnTurn=0;room.matchTelemetry=null;for(const p of room.players){p.ready=true;p.alive=true;p.hp=100;p.spawn=null;p.motion=null;p.lastDamage=null;p.lastPickup=null;p.lastUtility=null;p.inventory=[null,null];p.selectedItemSlot=1;p.shield=null;}const started=startRoom(id);if(started.ok){ensureTelemetry(started.room);pushEvent(started.room,'rematch',randomMap?'Rematch started on a random map.':'Rematch started on the same map.',{randomMap});}return started;}
 
-// Test-only hooks keep telemetry edge cases regression-covered without changing public room state.
 export const phase7a1TestHooks=Object.freeze({snapshot,observe});
