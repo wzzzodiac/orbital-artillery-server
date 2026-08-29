@@ -91,6 +91,9 @@ export function publicRoomState9Traversal(room){
   return state;
 }
 
+export const jumpActivePlayer9=jumpActivePlayer9Traversal;
+export const publicRoomState9=publicRoomState9Traversal;
+
 export {
   advanceTurnIfDue9,
   disconnectPlayer9,
