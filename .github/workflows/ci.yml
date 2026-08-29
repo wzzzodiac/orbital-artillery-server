@@ -2,9 +2,9 @@ name: Server CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, phase10-development]
   pull_request:
-    branches: [main]
+    branches: [main, phase10-development]
 
 jobs:
   syntax-check:

@@ -1,1 +1,1 @@
-export * from './phase9-air-pickup.js';
+export * from './phase10-huancavelica.js';
