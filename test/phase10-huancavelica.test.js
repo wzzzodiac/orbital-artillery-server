@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { phase10HuancavelicaTestHooks } from '../phase10-huancavelica.js';
 
 const { HUANCAVELICA_PLATFORMS, installHuancavelicaArena } = phase10HuancavelicaTestHooks;
+const byId=new Map(HUANCAVELICA_PLATFORMS.map(p=>[p.id,p]));
 
 test('Huancavelica Simulator exposes one connected multilayer platform graph',()=>{
   assert.ok(HUANCAVELICA_PLATFORMS.length>=24);
@@ -14,8 +15,19 @@ test('Huancavelica Simulator exposes one connected multilayer platform graph',()
     for(const link of platform.links)assert.ok(ids.has(link),`missing platform link ${platform.id} -> ${link}`);
   }
   const seen=new Set(),queue=[HUANCAVELICA_PLATFORMS[0].id];
-  while(queue.length){const id=queue.shift();if(seen.has(id))continue;seen.add(id);const p=HUANCAVELICA_PLATFORMS.find(entry=>entry.id===id);queue.push(...p.links);}
+  while(queue.length){const id=queue.shift();if(seen.has(id))continue;seen.add(id);const p=byId.get(id);queue.push(...p.links);}
   assert.equal(seen.size,HUANCAVELICA_PLATFORMS.length);
+});
+
+test('every declared Huancavelica route fits the existing 420-unit adaptive traversal envelope',()=>{
+  for(const platform of HUANCAVELICA_PLATFORMS){
+    for(const linkId of platform.links){
+      const target=byId.get(linkId);
+      const horizontalGap=Math.max(0,target.x1-platform.x2,platform.x1-target.x2);
+      assert.ok(horizontalGap<=420,`${platform.id} -> ${target.id} needs ${horizontalGap} horizontal units`);
+      assert.ok(Math.abs(target.y-platform.y)<=1050,`${platform.id} -> ${target.id} exceeds the 1050-unit adaptive apex envelope`);
+    }
+  }
 });
 
 test('Huancavelica arena installs server-authoritative floating platforms and valid spawn supports',()=>{
