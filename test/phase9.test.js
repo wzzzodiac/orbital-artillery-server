@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { activateRoom, createRoom, joinRoom, roomStore, setGameMode, setPlayerReady, startRoom } from '../rooms.js';
-import { phase9TestHooks, publicRoomState9 } from '../phase9.js';
+import { advanceTurnIfDue9, fireProjectile9, phase9TestHooks, publicRoomState9 } from '../phase9.js';
 
 function started(){
   roomStore.clear();
@@ -50,6 +50,24 @@ test('a player can collect only one pickup per turn even when two boxes overlap'
   assert.equal(phase9TestHooks.collectOneByTouch(room,player),true);
   assert.equal(player.inventory.filter(Boolean).length,2);
   assert.equal(room.pickups.length,0);
+});
+
+test('a projectile explosion cannot collect a pickup in v0.9',()=>{
+  const room=started();
+  const shooterId=room.match.activePlayerId;
+  const shooter=room.players.find(p=>p.id===shooterId);
+  shooter.inventory=[null,null];
+  shooter.selectedItemSlot=1;
+  const fired=fireProjectile9(shooterId);
+  assert.equal(fired.ok,true);
+  const q=room.match.projectile;
+  room.pickups=[{id:'blast-box',type:'heavy',label:'HEAVY BOMB',x:q.impactX,y:q.impactY,spawnTurn:room.match.turnNumber,expiresAfterTurn:room.match.turnNumber+3}];
+  const beforeTurn=room.match.turnNumber;
+  const changed=advanceTurnIfDue9(room.code,q.resolveAt+1);
+  assert.ok(changed);
+  assert.equal(shooter.inventory.filter(Boolean).length,0,'explosion must not add the box to inventory');
+  assert.equal(room.pickups.some(box=>box.id==='blast-box'),true,'the box must remain because only physical touch collects it');
+  assert.ok(room.match.turnNumber>=beforeTurn,'resolution must remain valid');
 });
 
 test('public v0.9 state advertises frenzy pacing, four-box cap and touch-only collection',()=>{
