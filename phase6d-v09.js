@@ -43,6 +43,7 @@ function snapshotAttack(room,q){
     spawn:Object.fromEntries(room.players.map(p=>[p.id,p.spawn?{...p.spawn}:null])),
     shield:Object.fromEntries(room.players.map(p=>[p.id,copyShield(p.shield)]))
   };
+  q.v09ShieldHitPlayerIds=[];
 }
 
 function isVoidDeath(player){
@@ -139,6 +140,7 @@ function correctAirStrike(room,q,beforeHp,beforeApplied,now){
   const shells=newlyAppliedAirShells(q,beforeApplied);
   if(!shells.length)return false;
   const snap=q.v09CombatSnapshot;if(!snap)return false;
+  const shieldHits=new Set(q.v09ShieldHitPlayerIds??[]);
   for(const player of room.players){
     if(snap.alive[player.id]===false||!player.spawn||isVoidDeath(player))continue;
     let hits=0;
@@ -149,12 +151,14 @@ function correctAirStrike(room,q,beforeHp,beforeApplied,now){
     const startHp=beforeHp[player.id];if(startHp==null)continue;
     const hadShield=Boolean(snap.shield[player.id]);
     const raw=hits*AIR_STRIKE_DAMAGE_PER_HIT;
+    if(raw>0&&hadShield)shieldHits.add(player.id);
     const damage=raw>0?(hadShield?Math.max(1,Math.ceil(raw*SHIELD_FACTOR)):raw):0;
     player.hp=Math.max(0,startHp-damage);player.alive=player.hp>0;
     if(damage>0)player.lastDamage={amount:damage,at:now,sourcePlayerId:q.ownerPlayerId};
     const allApplied=(q.airStrikeShells??[]).every(shell=>shell.applied);
-    if(hadShield)player.shield=allApplied?null:copyShield(snap.shield[player.id]);
+    if(hadShield)player.shield=allApplied&&shieldHits.has(player.id)?null:copyShield(snap.shield[player.id]);
   }
+  q.v09ShieldHitPlayerIds=[...shieldHits];
   room.match.pendingResult=resultFor(room);
   return true;
 }
