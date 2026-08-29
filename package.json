@@ -2,7 +2,7 @@
   "name": "orbital-artillery-server",
   "version": "0.0.1",
   "private": true,
-  "description": "Authoritative multiplayer server scaffold for Orbital Artillery.",
+  "description": "Authoritative multiplayer server for Carabayllo Secret Wars.",
   "type": "module",
   "main": "server.js",
   "scripts": {
