@@ -73,7 +73,7 @@ test('a projectile explosion cannot collect a pickup in v0.9',()=>{
 test('public v0.9 state advertises frenzy pacing, four-box cap and touch-only collection',()=>{
   const room=started();
   const state=publicRoomState9(room);
-  assert.equal(state.version,'0.9-beta');
+  assert.equal(state.version,'0.9.1-beta');
   assert.equal(state.phase,'9');
   assert.equal(state.pickupRules.earlyEveryTurns,3);
   assert.equal(state.pickupRules.frenzyStartsAtTurn,10);
