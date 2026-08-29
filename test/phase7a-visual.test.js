@@ -29,17 +29,17 @@ test('Air Strike reserves four seconds per shell for 1.5x full-screen descent',(
   assert.equal(room.match.turnEndsAt,q.resolveAt);
 });
 
-test('vehicle projectile hitbox scales from 52 to 78 world units with the 50 percent larger tanks',()=>{
+test('vehicle projectile hitbox matches the 65 percent v0.9 tank scale at 51 world units',()=>{
   const room={players:[{id:'a',alive:true,spawn:{x:0,y:100}},{id:'b',alive:true,spawn:{x:300,y:100}}],match:{turnEndsAt:0}};
-  const v={ownerPlayerId:'a',startedAt:1000,durationMs:1000,impactAt:2000,startX:200,startY:20,vx:100,vy:0,gravity:0,windAccel:0,impactX:400,impactY:20,impactReason:'terrain',hitPlayerId:null};
+  const v={ownerPlayerId:'a',startedAt:1000,durationMs:1000,impactAt:2000,startX:200,startY:40,vx:100,vy:0,gravity:0,windAccel:0,impactX:400,impactY:40,impactReason:'terrain',hitPlayerId:null};
   assert.equal(phase7aVisualTestHooks.expandOneProjectileHit(room,v,'a'),true);
   assert.equal(v.hitPlayerId,'b');
   assert.equal(v.impactReason,'player');
   assert.equal(v.expandedVehicleHitbox7A,true);
-  assert.ok(Math.hypot(v.impactX-300,v.impactY-90)<=78.5);
+  assert.ok(Math.hypot(v.impactX-300,v.impactY-90)<=51.5);
 });
 
-test('Nuke applies 20 direct damage and a stronger but still survivable diagonal terrain scar',()=>{
+test('Nuke keeps 20 direct damage and uses the slightly stronger diagonal terrain scar',()=>{
   const room=started(['a','b','c']);const {id,p:shooter}=equip(room,'nuke','NUKE LASER');
   const target=room.players.find(x=>x.id!==id);target.hp=100;
   const r=fireProjectile7AVisual(id);assert.equal(r.ok,true);
@@ -52,7 +52,7 @@ test('Nuke applies 20 direct damage and a stronger but still survivable diagonal
   assert.equal(target.hp,80);
   const scars=room.arena.craters.slice(before).filter(c=>String(c.id).includes('nuke-scar'));
   assert.ok(scars.length>0);
-  assert.ok(scars.every(c=>c.depth===299));
+  assert.ok(scars.every(c=>c.depth===330));
   assert.ok(scars.every(c=>c.depth<500),'Nuke terrain deformation must remain a survivable scar, not a vertical void');
   assert.deepEqual(q.pendingVoidDeathIds,[]);
   assert.equal(shooter.alive,true);
