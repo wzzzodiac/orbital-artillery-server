@@ -70,10 +70,9 @@ function maintainPhase9Pickups(room){
   if(room?.status!=='started'||!room.match)return false;
   const turn=room.match.turnNumber??0;
   room.pickups=room.pickups.filter(box=>turn<=Number(box.expiresAfterTurn??turn));
-  if(turn<FRENZY_START_TURN)return false; // Turns 3/6/9 remain handled by the existing baseline.
+  if(turn<FRENZY_START_TURN)return false;
   if(room.phase9PickupAttemptTurn===turn)return false;
   room.phase9PickupAttemptTurn=turn;
-  // If the baseline already created this turn's pickup (e.g. turn 12), that is the one spawn for this turn.
   if(room.pickups.some(box=>box.spawnTurn===turn))return false;
   return spawnPhase9Pickup(room);
 }
@@ -132,7 +131,7 @@ export function publicRoomState9(room){
   ensurePhase9(room);
   let state=basePublic(room);
   if(maintainPhase9Pickups(room))state=basePublic(room);
-  state.version='0.9-beta';
+  state.version='0.9.1-beta';
   state.phase='9';
   state.pickups=(state.pickups??[]).map(({phase6cPoolRolled,phase6dPoolRolled,phase6ePoolRolled,...box})=>box);
   state.itemPool=PHASE6E_ITEM_POOL.map(item=>({...item}));
