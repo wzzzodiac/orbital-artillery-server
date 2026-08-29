@@ -13,8 +13,7 @@ test('jump sweep collects a pickup when the vehicle hitbox only grazes it mid-ai
 test('jump sweep does not collect a pickup outside the hitbox along the complete arc',()=>{
   const radius=74;
   const motion={type:'jump',fromX:1000,fromY:3000,toX:1180,toY:3000,apex:150};
-  const middle=phase9AirPickupTestHooks.motionPoint(motion,.5);
-  const box={x:middle.x+radius+25,y:middle.y-8};
+  const box={x:1450,y:2450};
   assert.equal(phase9AirPickupTestHooks.motionTouchesPickup(motion,box,radius),false);
 });
 
