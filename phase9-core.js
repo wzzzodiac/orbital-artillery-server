@@ -19,7 +19,9 @@ import {
 const WORLD_WIDTH=5000;
 const WORLD_HEIGHT=5000;
 const GROUND_OFFSET=8;
-const PICKUP_RADIUS=64;
+const VEHICLE_HIT_RADIUS=51;
+const PICKUP_VISUAL_RADIUS=22;
+const PICKUP_TOUCH_RADIUS=VEHICLE_HIT_RADIUS+PICKUP_VISUAL_RADIUS+1;
 const PICKUP_LIFETIME_TURNS=4;
 const EARLY_PICKUP_EVERY=3;
 const FRENZY_START_TURN=10;
@@ -135,7 +137,7 @@ function collectOneByTouch(room,player){
   const turn=room.match?.turnNumber??0;if(player.pickupCollectedTurn===turn)return false;
   const slot=player.inventory.findIndex(item=>item==null);if(slot<0)return false;
   let bestIndex=-1,bestDistance=Infinity;
-  for(let i=0;i<room.pickups.length;i+=1){const box=room.pickups[i],distance=Math.hypot(player.spawn.x-box.x,(player.spawn.y-8)-box.y);if(distance<=PICKUP_RADIUS&&distance<bestDistance){bestDistance=distance;bestIndex=i;}}
+  for(let i=0;i<room.pickups.length;i+=1){const box=room.pickups[i],distance=Math.hypot(player.spawn.x-box.x,(player.spawn.y-GROUND_OFFSET)-box.y);if(distance<=PICKUP_TOUCH_RADIUS&&distance<bestDistance){bestDistance=distance;bestIndex=i;}}
   if(bestIndex<0)return false;
   const [box]=room.pickups.splice(bestIndex,1),label=box.type==='heal'?HEAL_LABEL:box.label;
   player.inventory[slot]={type:box.type,label,pickedAtTurn:turn};player.lastPickup={type:box.type,label,method:'touch',at:Date.now()};player.pickupCollectedTurn=turn;return true;
@@ -159,7 +161,7 @@ export function publicRoomState9(room){
   state.pickups=(state.pickups??[]).map(({phase6cPoolRolled,phase6dPoolRolled,phase6ePoolRolled,phase9FairPlaced,...box})=>box.type==='heal'?{...box,label:HEAL_LABEL}:box);
   state.players=(state.players??[]).map(player=>({...player,inventory:(player.inventory??[]).map(item=>item?.type==='heal'?{...item,label:HEAL_LABEL}:item)}));
   state.itemPool=PHASE6E_ITEM_POOL.map(item=>item.type==='heal'?{...item,label:HEAL_LABEL}:{...item});
-  state.pickupRules={earlyEveryTurns:EARLY_PICKUP_EVERY,frenzyStartsAtTurn:FRENZY_START_TURN,frenzyEveryTurns:1,lifetimeTurns:PICKUP_LIFETIME_TURNS,maxOnMap:MAX_PICKUPS,inventorySize:INVENTORY_SIZE,maxCollectedPerPlayerTurn:1,collectByTouch:true,collectByExplosion:false,pickupEndsTurn:false,placement:'midpoints between adjacent living players, balanced across gaps'};
+  state.pickupRules={earlyEveryTurns:EARLY_PICKUP_EVERY,frenzyStartsAtTurn:FRENZY_START_TURN,frenzyEveryTurns:1,lifetimeTurns:PICKUP_LIFETIME_TURNS,maxOnMap:MAX_PICKUPS,inventorySize:INVENTORY_SIZE,maxCollectedPerPlayerTurn:1,collectByTouch:true,collectByExplosion:false,pickupEndsTurn:false,touchRadius:PICKUP_TOUCH_RADIUS,placement:'midpoints between adjacent living players, balanced across gaps'};
   state.balanceRules={...(state.balanceRules??{}),pickupEveryTurns:EARLY_PICKUP_EVERY,pickupFrenzyStartsAtTurn:FRENZY_START_TURN,pickupFrenzyEveryTurns:1,pickupLifetimeTurns:PICKUP_LIFETIME_TURNS,maxPickups:MAX_PICKUPS,pickupPlacement:'fair-midpoints'};
   return state;
 }
@@ -174,4 +176,4 @@ export function setTerrain9(id,terrain){return baseTerrain(id,terrain);}
 export function disconnectPlayer9(id){return baseDisconnect(id);}
 export function rematchRoom9(id,options={}){const result=baseRematch(id,options);if(result.ok){result.room.phase9PickupAttemptTurn=0;for(const p of result.room.players)p.pickupCollectedTurn=-1;normalizeHealLabels(result.room);}return result;}
 
-export const phase9TestHooks=Object.freeze({ensurePhase9,normalizeHealLabels,livingPlayersByX,fairPickupCandidates,repositionNewPickupsFairly,spawnPhase9Pickup,maintainPhase9Pickups,collectOneByTouch,runAdvanceWithoutExplosionCollection});
+export const phase9TestHooks=Object.freeze({ensurePhase9,normalizeHealLabels,livingPlayersByX,fairPickupCandidates,repositionNewPickupsFairly,spawnPhase9Pickup,maintainPhase9Pickups,collectOneByTouch,runAdvanceWithoutExplosionCollection,PICKUP_TOUCH_RADIUS});
