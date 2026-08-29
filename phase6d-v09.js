@@ -14,8 +14,8 @@ const BASIC_RADIUS=260;
 const HEAVY_DAMAGE=20;
 const HEAVY_RADIUS=320;
 const TRIPLE_DAMAGE_PER_HIT=10;
-const CLUSTER_DAMAGE=14;
-const CLUSTER_RADIUS=150;
+const CLUSTER_MAIN_DAMAGE=10;
+const CLUSTER_SUBHIT_DAMAGE=5;
 const AIR_STRIKE_DAMAGE_PER_HIT=5;
 const VEHICLE_HIT_RADIUS=51;
 const HEAL_AMOUNT=20;
@@ -98,13 +98,15 @@ function tripleDamage(q){
 
 function clusterDamage(q){
   const out={};const snap=q.v09CombatSnapshot;if(!snap)return out;
+  if(q.impactReason==='player'&&q.hitPlayerId&&snap.alive[q.hitPlayerId]!==false){
+    out[q.hitPlayerId]=(out[q.hitPlayerId]??0)+CLUSTER_MAIN_DAMAGE;
+  }
   for(const impact of q.clusterImpacts??[]){
     if(Number(impact?.y)>=5000)continue;
     for(const [id,spawn] of Object.entries(snap.spawn)){
       if(!spawn||snap.alive[id]===false)continue;
       const d=Math.hypot(spawn.x-impact.x,(spawn.y-10)-impact.y);
-      if(d>CLUSTER_RADIUS)continue;
-      out[id]=(out[id]??0)+Math.max(1,Math.round(CLUSTER_DAMAGE*(1-d/CLUSTER_RADIUS)));
+      if(d<=VEHICLE_HIT_RADIUS)out[id]=(out[id]??0)+CLUSTER_SUBHIT_DAMAGE;
     }
   }
   return out;
@@ -194,8 +196,9 @@ export function advanceTurnIfDue6DV09(code,now=Date.now()){
 export function publicRoomState6DV09(room){
   const state=basePublic(room);
   state.v09CombatBalance={
-    maxHp:MAX_HP,basicMaxDamage:BASIC_DAMAGE,heavyMaxDamage:HEAVY_DAMAGE,
-    tripleDamagePerDirectHit:TRIPLE_DAMAGE_PER_HIT,clusterMaxDamagePerImpact:CLUSTER_DAMAGE,
+    version:'0.9.1-beta',maxHp:MAX_HP,basicMaxDamage:BASIC_DAMAGE,heavyMaxDamage:HEAVY_DAMAGE,
+    tripleDamagePerDirectHit:TRIPLE_DAMAGE_PER_HIT,clusterMainDirectHitDamage:CLUSTER_MAIN_DAMAGE,
+    clusterSubhitDirectDamage:CLUSTER_SUBHIT_DAMAGE,
     airStrikeDamagePerDirectHit:AIR_STRIKE_DAMAGE_PER_HIT,nukeDamage:20,healAmount:HEAL_AMOUNT,
     shieldFactor:SHIELD_FACTOR,shieldDuration:'one complete incoming attack',vehicleHitRadius:VEHICLE_HIT_RADIUS
   };
