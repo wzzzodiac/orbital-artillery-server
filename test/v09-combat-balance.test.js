@@ -1,0 +1,104 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { activateRoom, createRoom, joinRoom, roomStore, setGameMode, setPlayerReady, startRoom } from '../rooms.js';
+import { advanceTurnIfDue6DV09, fireProjectile6DV09, publicRoomState6DV09 } from '../phase6d-v09.js';
+
+function started(){
+  roomStore.clear();
+  const room=createRoom('a','A').room;
+  assert.equal(joinRoom(room.code,'b','B').ok,true);
+  assert.equal(setGameMode('a','survival').ok,true);
+  assert.equal(setPlayerReady('a',true).ok,true);
+  assert.equal(setPlayerReady('b',true).ok,true);
+  assert.equal(startRoom('a').ok,true);
+  activateRoom(room.code,room.match.startAt);
+  return room;
+}
+function actors(room){
+  const shooter=room.players.find(p=>p.id===room.match.activePlayerId);
+  const target=room.players.find(p=>p.id!==shooter.id);
+  shooter.motion=null;target.motion=null;
+  return{shooter,target};
+}
+function equip(player,type,label){player.inventory=[{type,label},null];player.selectedItemSlot=2;}
+
+test('v0.9 public combat contract exposes the new damage, heal, shield and hitbox values',()=>{
+  const room=started();
+  const state=publicRoomState6DV09(room),b=state.v09CombatBalance;
+  assert.equal(b.maxHp,100);
+  assert.equal(b.basicMaxDamage,10);
+  assert.equal(b.heavyMaxDamage,20);
+  assert.equal(b.tripleDamagePerDirectHit,10);
+  assert.equal(b.airStrikeDamagePerDirectHit,5);
+  assert.equal(b.nukeDamage,20);
+  assert.equal(b.healAmount,20);
+  assert.equal(b.shieldFactor,.5);
+  assert.equal(b.vehicleHitRadius,51);
+});
+
+test('Heal restores 20 HP with a hard cap of 100',()=>{
+  const room=started(),{shooter}=actors(room);
+  shooter.hp=55;equip(shooter,'heal','HEAL +20');
+  const result=fireProjectile6DV09(shooter.id);
+  assert.equal(result.ok,true);
+  assert.equal(result.healed,20);
+  assert.equal(shooter.hp,75);
+  assert.equal(shooter.lastUtility.amount,20);
+});
+
+test('Basic direct hit deals 10 instead of the historical 45',()=>{
+  const room=started(),{shooter,target}=actors(room);
+  target.hp=100;
+  const result=fireProjectile6DV09(shooter.id);assert.equal(result.ok,true);
+  const q=room.match.projectile,now=Date.now();
+  q.impactReason='player';q.hitPlayerId=target.id;q.impactX=target.spawn.x;q.impactY=target.spawn.y-10;
+  q.impactAt=now;q.resolveAt=now+900;q.resolutionApplied=false;room.match.turnEndsAt=q.resolveAt;
+  advanceTurnIfDue6DV09(room.code,now);
+  assert.equal(target.hp,90);
+  assert.equal(target.lastDamage.amount,10);
+});
+
+test('Heavy direct hit deals 20',()=>{
+  const room=started(),{shooter,target}=actors(room);
+  target.hp=100;equip(shooter,'heavy','HEAVY BOMB');
+  const result=fireProjectile6DV09(shooter.id);assert.equal(result.ok,true);
+  const q=room.match.projectile,now=Date.now();
+  q.impactReason='player';q.hitPlayerId=target.id;q.impactX=target.spawn.x;q.impactY=target.spawn.y-10;
+  q.impactAt=now;q.resolveAt=now+900;q.resolutionApplied=false;q.heavyResolutionApplied=false;room.match.turnEndsAt=q.resolveAt;
+  advanceTurnIfDue6DV09(room.code,now);
+  assert.equal(target.hp,80);
+  assert.equal(target.lastDamage.amount,20);
+});
+
+test('Triple counts only direct projectile hits and Shield protects the complete volley once',()=>{
+  const room=started(),{shooter,target}=actors(room);
+  target.hp=100;target.shield={factor:.5,activatedAt:Date.now(),activatedTurn:room.match.turnNumber};
+  equip(shooter,'triple','TRIPLE SHOT');
+  const result=fireProjectile6DV09(shooter.id);assert.equal(result.ok,true);
+  const q=room.match.projectile,now=Date.now();
+  q.impactAt=now-1;q.specialResolveAt=now;q.resolveAt=now+900;room.match.turnEndsAt=q.resolveAt;
+  q.volley[0]={...q.volley[0],impactReason:'player',hitPlayerId:target.id,impactX:target.spawn.x,impactY:target.spawn.y-10,impactAt:now};
+  q.volley[1]={...q.volley[1],impactReason:'terrain',hitPlayerId:null,impactX:target.spawn.x+400,impactY:target.spawn.y,impactAt:now};
+  q.volley[2]={...q.volley[2],impactReason:'player',hitPlayerId:target.id,impactX:target.spawn.x,impactY:target.spawn.y-10,impactAt:now};
+  advanceTurnIfDue6DV09(room.code,now);
+  assert.equal(target.hp,90,'two direct hits = 20 raw, Shield halves the whole attack to 10');
+  assert.equal(target.lastDamage.amount,10);
+  assert.equal(target.shield,null);
+});
+
+test('Air Strike deals 5 for each shell that directly reaches the vehicle hitbox',()=>{
+  const room=started(),{shooter,target}=actors(room);
+  target.hp=100;equip(shooter,'airstrike','AIR STRIKE');
+  const result=fireProjectile6DV09(shooter.id);assert.equal(result.ok,true);
+  const q=room.match.projectile,now=Date.now();
+  q.resolveAt=now+5000;room.match.turnEndsAt=q.resolveAt;
+  for(const [index,shell] of q.airStrikeShells.entries()){
+    shell.applied=false;
+    shell.impactAt=index<2?now:now+3000+index*100;
+    if(index<2){shell.x=target.spawn.x;shell.y=target.spawn.y-10;}
+    else{shell.x=target.spawn.x+500;shell.y=target.spawn.y-10;}
+  }
+  advanceTurnIfDue6DV09(room.code,now);
+  assert.equal(target.hp,90);
+  assert.equal(target.lastDamage.amount,10);
+});
