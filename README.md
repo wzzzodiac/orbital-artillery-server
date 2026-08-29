@@ -2,7 +2,7 @@
 
 Authoritative multiplayer backend for **Carabayllo Secret Wars**.
 
-Repository name intentionally remains `wzzzodiac/orbital-artillery-server`; the frontend repository remains `wzzzodiac/orbital-artillery`.
+Repository name intentionally remains `wzzzodiac/orbital-artillery-server`; the frontend repository is `wzzzodiac/carabayllo-secret-wars`.
 
 ## Current status
 
