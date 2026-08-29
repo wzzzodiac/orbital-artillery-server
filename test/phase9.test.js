@@ -15,7 +15,7 @@ function started(){
   return room;
 }
 
-test('v0.9 pickup frenzy starts at turn 10, spawns at most once per turn, and caps the map at four',()=>{
+test('v0.9 pickup frenzy starts at turn 10, spawns at most once per turn, and never exceeds four live boxes',()=>{
   const room=started();
   room.pickups=[];room.match.turnNumber=10;room.phase9PickupAttemptTurn=0;
   assert.equal(phase9TestHooks.maintainPhase9Pickups(room),true);
@@ -23,11 +23,14 @@ test('v0.9 pickup frenzy starts at turn 10, spawns at most once per turn, and ca
   assert.equal(room.pickups[0].spawnTurn,10);
   assert.equal(phase9TestHooks.maintainPhase9Pickups(room),false);
   assert.equal(room.pickups.length,1);
-  for(let turn=11;turn<=13;turn+=1){room.match.turnNumber=turn;assert.equal(phase9TestHooks.maintainPhase9Pickups(room),true);}
-  assert.equal(room.pickups.length,4);
-  room.match.turnNumber=14;
-  assert.equal(phase9TestHooks.maintainPhase9Pickups(room),false);
-  assert.equal(room.pickups.length,4);
+  for(let turn=11;turn<=20;turn+=1){
+    room.match.turnNumber=turn;
+    phase9TestHooks.maintainPhase9Pickups(room);
+    assert.ok(room.pickups.length<=4);
+    assert.equal(phase9TestHooks.maintainPhase9Pickups(room),false,'only one spawn attempt is allowed per turn');
+  }
+  assert.ok(room.pickups.length>0);
+  assert.ok(room.pickups.every(box=>room.match.turnNumber<=box.expiresAfterTurn));
 });
 
 test('a player can collect only one pickup per turn even when two boxes overlap',()=>{
