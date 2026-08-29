@@ -25,10 +25,26 @@ const EARLY_PICKUP_EVERY=3;
 const FRENZY_START_TURN=10;
 const MAX_PICKUPS=4;
 const INVENTORY_SIZE=2;
+const HEAL_LABEL='HEAL +20';
 const BLOCKED_SLOT=Object.freeze({type:'__phase9_collection_block__',label:'BLOCKED'});
 
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const surface=(room,x)=>phase7aHotfixTestHooks.surface(room,x);
+
+function normalizeHealLabels(room){
+  if(!room)return false;
+  let changed=false;
+  for(const box of room.pickups??[]){
+    if(box?.type==='heal'&&box.label!==HEAL_LABEL){box.label=HEAL_LABEL;changed=true;}
+  }
+  for(const player of room.players??[]){
+    for(const item of player.inventory??[]){
+      if(item?.type==='heal'&&item.label!==HEAL_LABEL){item.label=HEAL_LABEL;changed=true;}
+    }
+    if(player.lastPickup?.type==='heal'&&player.lastPickup.label!==HEAL_LABEL){player.lastPickup.label=HEAL_LABEL;changed=true;}
+  }
+  return changed;
+}
 
 function ensurePhase9(room){
   if(!room)return room;
@@ -38,12 +54,52 @@ function ensurePhase9(room){
     if(!Array.isArray(player.inventory))player.inventory=Array(INVENTORY_SIZE).fill(null);
     if(!Number.isInteger(player.pickupCollectedTurn))player.pickupCollectedTurn=-1;
   }
+  normalizeHealLabels(room);
   return room;
 }
 
-function spawnPhase9Pickup(room){
-  ensurePhase9(room);
-  if(room.pickups.length>=MAX_PICKUPS)return false;
+function livingPlayersByX(room){
+  return(room.players??[]).filter(p=>p.spawn&&p.alive!==false).sort((a,b)=>a.spawn.x-b.spawn.x);
+}
+
+function fairPickupCandidates(room){
+  const players=livingPlayersByX(room);
+  if(players.length<2)return[];
+  const gaps=[];
+  for(let i=0;i<players.length-1;i+=1){
+    const left=players[i],right=players[i+1],mid=(left.spawn.x+right.spawn.x)/2,gap=Math.max(1,right.spawn.x-left.spawn.x);
+    gaps.push({index:i,left,right,mid,gap});
+  }
+  const nearestGapIndex=x=>{
+    let best=0,bestDistance=Infinity;
+    for(const gap of gaps){const d=Math.abs(x-gap.mid);if(d<bestDistance){bestDistance=d;best=gap.index;}}
+    return best;
+  };
+  const occupancy=new Map(gaps.map(g=>[g.index,0]));
+  for(const box of room.pickups??[]){const index=nearestGapIndex(box.x);occupancy.set(index,(occupancy.get(index)??0)+1);}
+  const candidates=[];
+  for(const gap of gaps){
+    const spread=Math.min(180,Math.max(55,gap.gap*.16));
+    const offsets=[0,-spread,spread,-spread*2,spread*2];
+    for(const offset of offsets){
+      let x=gap.mid+offset;
+      if(gap.gap>220)x=clamp(x,gap.left.spawn.x+100,gap.right.spawn.x-100);
+      else x=gap.mid;
+      x=clamp(Math.round(x),140,WORLD_WIDTH-140);
+      const y=surface(room,x);
+      if(y>=WORLD_HEIGHT-1)continue;
+      const py=Math.round(y-24);
+      if(players.some(p=>Math.hypot(p.spawn.x-x,p.spawn.y-(y-GROUND_OFFSET))<110))continue;
+      const clearance=(room.pickups??[]).length?Math.min(...room.pickups.map(box=>Math.hypot(box.x-x,box.y-py))):Infinity;
+      if(clearance<95)continue;
+      candidates.push({x,y:py,gapIndex:gap.index,occupancy:occupancy.get(gap.index)??0,fairnessError:Math.abs(x-gap.mid)/Math.max(1,gap.gap/2),clearance});
+    }
+  }
+  candidates.sort((a,b)=>a.occupancy-b.occupancy||a.fairnessError-b.fairnessError||b.clearance-a.clearance||a.gapIndex-b.gapIndex||a.x-b.x);
+  return candidates;
+}
+
+function fallbackPickupCandidates(room){
   const candidates=[];
   for(let x=140;x<=WORLD_WIDTH-140;x+=45){
     const y=surface(room,x);
@@ -52,13 +108,21 @@ function spawnPhase9Pickup(room){
     if(room.pickups.some(box=>Math.abs(box.x-x)<140))continue;
     candidates.push({x,y:Math.round(y-24)});
   }
-  if(!candidates.length)return false;
-  const point=candidates[randomInt(candidates.length)];
+  return candidates;
+}
+
+function spawnPhase9Pickup(room){
+  ensurePhase9(room);
+  if(room.pickups.length>=MAX_PICKUPS)return false;
+  const fair=fairPickupCandidates(room);
+  const fallback=fair.length?[]:fallbackPickupCandidates(room);
+  if(!fair.length&&!fallback.length)return false;
+  const point=fair[0]??fallback[randomInt(fallback.length)];
   const item=chooseBalancedItem6E(randomInt(PHASE6E_POOL_TOTAL));
   const turn=room.match?.turnNumber??0;
   room.pickups.push({
     id:`${room.code}-phase9-pickup-${turn}-${Date.now()}-${randomInt(1_000_000)}`,
-    type:item.type,label:item.label,x:point.x,y:point.y,
+    type:item.type,label:item.type==='heal'?HEAL_LABEL:item.label,x:point.x,y:point.y,
     spawnTurn:turn,expiresAfterTurn:turn+PICKUP_LIFETIME_TURNS-1,
     phase6ePoolRolled:true,phase9Spawn:true
   });
@@ -70,6 +134,7 @@ function maintainPhase9Pickups(room){
   if(room?.status!=='started'||!room.match)return false;
   const turn=room.match.turnNumber??0;
   room.pickups=room.pickups.filter(box=>turn<=Number(box.expiresAfterTurn??turn));
+  normalizeHealLabels(room);
   if(turn<FRENZY_START_TURN)return false;
   if(room.phase9PickupAttemptTurn===turn)return false;
   room.phase9PickupAttemptTurn=turn;
@@ -92,8 +157,9 @@ function collectOneByTouch(room,player){
   }
   if(bestIndex<0)return false;
   const [box]=room.pickups.splice(bestIndex,1);
-  player.inventory[slot]={type:box.type,label:box.label,pickedAtTurn:turn};
-  player.lastPickup={type:box.type,label:box.label,method:'touch',at:Date.now()};
+  const label=box.type==='heal'?HEAL_LABEL:box.label;
+  player.inventory[slot]={type:box.type,label,pickedAtTurn:turn};
+  player.lastPickup={type:box.type,label,method:'touch',at:Date.now()};
   player.pickupCollectedTurn=turn;
   return true;
 }
@@ -123,7 +189,7 @@ function runAdvanceWithoutExplosionCollection(code,now){
   }
   const changed=baseAdvance(code,now);
   if(owner&&inventoryBefore)owner.inventory=inventoryBefore;
-  if(changed)maintainPhase9Pickups(changed);
+  if(changed){normalizeHealLabels(changed);maintainPhase9Pickups(changed);}
   return changed;
 }
 
@@ -131,10 +197,12 @@ export function publicRoomState9(room){
   ensurePhase9(room);
   let state=basePublic(room);
   if(maintainPhase9Pickups(room))state=basePublic(room);
-  state.version='0.9.1-beta';
+  normalizeHealLabels(room);
+  state.version='0.9.2-beta';
   state.phase='9';
-  state.pickups=(state.pickups??[]).map(({phase6cPoolRolled,phase6dPoolRolled,phase6ePoolRolled,...box})=>box);
-  state.itemPool=PHASE6E_ITEM_POOL.map(item=>({...item}));
+  state.pickups=(state.pickups??[]).map(({phase6cPoolRolled,phase6dPoolRolled,phase6ePoolRolled,...box})=>box.type==='heal'?{...box,label:HEAL_LABEL}:box);
+  state.players=(state.players??[]).map(player=>({...player,inventory:(player.inventory??[]).map(item=>item?.type==='heal'?{...item,label:HEAL_LABEL}:item)}));
+  state.itemPool=PHASE6E_ITEM_POOL.map(item=>item.type==='heal'?{...item,label:HEAL_LABEL}:{...item});
   state.pickupRules={
     earlyEveryTurns:EARLY_PICKUP_EVERY,
     frenzyStartsAtTurn:FRENZY_START_TURN,
@@ -145,9 +213,10 @@ export function publicRoomState9(room){
     maxCollectedPerPlayerTurn:1,
     collectByTouch:true,
     collectByExplosion:false,
-    pickupEndsTurn:false
+    pickupEndsTurn:false,
+    placement:'midpoints between adjacent living players, balanced across gaps'
   };
-  state.balanceRules={...(state.balanceRules??{}),pickupEveryTurns:EARLY_PICKUP_EVERY,pickupFrenzyStartsAtTurn:FRENZY_START_TURN,pickupFrenzyEveryTurns:1,pickupLifetimeTurns:PICKUP_LIFETIME_TURNS,maxPickups:MAX_PICKUPS};
+  state.balanceRules={...(state.balanceRules??{}),pickupEveryTurns:EARLY_PICKUP_EVERY,pickupFrenzyStartsAtTurn:FRENZY_START_TURN,pickupFrenzyEveryTurns:1,pickupLifetimeTurns:PICKUP_LIFETIME_TURNS,maxPickups:MAX_PICKUPS,pickupPlacement:'fair-midpoints'};
   return state;
 }
 
@@ -156,9 +225,9 @@ export function moveActivePlayer9(id,direction){return runMovementWithPhase9Coll
 export function jumpActivePlayer9(id,direction){return runMovementWithPhase9Collection(id,()=>baseJump(id,direction));}
 export function setAim9(id,angle,power){return baseAim(id,angle,power);}
 export function selectItem9(id,slot){return baseSelect(id,slot);}
-export function fireProjectile9(id){const result=baseFire(id);if(result.ok)maintainPhase9Pickups(result.room);return result;}
+export function fireProjectile9(id){const result=baseFire(id);if(result.ok){normalizeHealLabels(result.room);maintainPhase9Pickups(result.room);}return result;}
 export function setTerrain9(id,terrain){return baseTerrain(id,terrain);}
 export function disconnectPlayer9(id){return baseDisconnect(id);}
-export function rematchRoom9(id,options={}){const result=baseRematch(id,options);if(result.ok){result.room.phase9PickupAttemptTurn=0;for(const p of result.room.players)p.pickupCollectedTurn=-1;}return result;}
+export function rematchRoom9(id,options={}){const result=baseRematch(id,options);if(result.ok){result.room.phase9PickupAttemptTurn=0;for(const p of result.room.players)p.pickupCollectedTurn=-1;normalizeHealLabels(result.room);}return result;}
 
-export const phase9TestHooks=Object.freeze({ensurePhase9,spawnPhase9Pickup,maintainPhase9Pickups,collectOneByTouch,runAdvanceWithoutExplosionCollection});
+export const phase9TestHooks=Object.freeze({ensurePhase9,normalizeHealLabels,livingPlayersByX,fairPickupCandidates,spawnPhase9Pickup,maintainPhase9Pickups,collectOneByTouch,runAdvanceWithoutExplosionCollection});
