@@ -71,10 +71,22 @@ test('natural ledge drop does not convert upward walls or void into a fake fall'
   assert.equal(phase9TraversalTestHooks.naturalDropTarget(room,from,1),null);
 });
 
-test('public movement contract advertises adaptive vault plus natural ledge drop without changing normal jump distance',()=>{
+test('embedded vehicle is reconciled back onto the authoritative terrain surface before traversal',()=>{
+  const room=started(),player=room.players.find(p=>p.id===room.match.activePlayerId),x=player.spawn.x;
+  const expectedY=Math.round(phase7aHotfixTestHooks.surface(room,x)-8);
+  player.spawn={...player.spawn,y:expectedY+180};
+  player.motion={type:'fall',startedAt:Date.now()-1000,endsAt:Date.now()-500,fromX:x,fromY:expectedY,toX:x,toY:expectedY+180,apex:0};
+  assert.equal(phase9TraversalTestHooks.reconcileEmbeddedPlayer(room,player),true);
+  assert.equal(player.spawn.y,expectedY);
+  assert.equal(player.motion,null);
+  assert.ok(Number.isFinite(player.terrainReconciledAt));
+});
+
+test('public movement contract advertises adaptive vault, natural drop and terrain recovery without changing normal jump distance',()=>{
   const room=started(),state=publicRoomState9(room);
   assert.equal(state.movementRules.adaptiveLedgeVault,true);
   assert.equal(state.movementRules.naturalLedgeDrop,true);
+  assert.equal(state.movementRules.terrainEmbedRecovery,true);
   assert.equal(state.movementRules.normalJumpDistance,180);
   assert.equal(state.movementRules.adaptiveMaxDistance,420);
   assert.equal(state.movementRules.adaptiveMaxApex,1050);
