@@ -145,6 +145,7 @@ export function jumpActivePlayer9Traversal(id,direction){
 
 export function publicRoomState9Traversal(room){
   const state=basePublic(room);
+  state.version='0.9.8-release-candidate';
   state.movementRules={...(state.movementRules??{}),adaptiveLedgeVault:true,naturalLedgeDrop:true,terrainEmbedRecovery:true,normalJumpDistance:NORMAL_JUMP_DISTANCE,adaptiveMaxDistance:EXTENDED_MAX_DISTANCE,adaptiveMaxApex:MAX_ADAPTIVE_APEX};
   return state;
 }
