@@ -17,7 +17,7 @@ const mirrorPair=(leftId,rightId)=>{
 };
 
 test('Huancavelica Simulator exposes one connected multilayer platform graph',()=>{
-  assert.equal(HUANCAVELICA_PLATFORMS.length,27);
+  assert.equal(HUANCAVELICA_PLATFORMS.length,31);
   const ids=new Set(HUANCAVELICA_PLATFORMS.map(p=>p.id));
   assert.equal(ids.size,HUANCAVELICA_PLATFORMS.length);
   for(const platform of HUANCAVELICA_PLATFORMS){
@@ -40,12 +40,14 @@ test('all Huancavelica platforms remain connected through routes inside the 420/
   assert.equal(seen.size,HUANCAVELICA_PLATFORMS.length,`unreachable platforms: ${HUANCAVELICA_PLATFORMS.filter(p=>!seen.has(p.id)).map(p=>p.id).join(', ')}`);
 });
 
-test('Alpine Ridge v4 keeps the approved symmetric tower-and-island composition',()=>{
+test('Alpine Ridge v5 preserves the traced concept landmarks and mirrored side towers',()=>{
+  mirrorPair('left-shoulder-high','right-shoulder-high');
   mirrorPair('left-cliff-top','right-cliff-top');
-  mirrorPair('left-cliff-upper','right-cliff-upper');
+  mirrorPair('left-upper-ledge','right-upper-ledge');
   mirrorPair('left-cliff-mid','right-cliff-mid');
-  mirrorPair('left-cliff-lower','right-cliff-lower');
-  mirrorPair('left-cliff-bottom','right-cliff-bottom');
+  mirrorPair('left-transition','right-transition');
+  mirrorPair('left-lower-ledge','right-lower-ledge');
+  mirrorPair('left-bottom-ledge','right-bottom-ledge');
   mirrorPair('left-bottom-exit','right-bottom-exit');
   mirrorPair('upper-left','upper-right');
   mirrorPair('high-step-left','high-step-right');
@@ -54,13 +56,16 @@ test('Alpine Ridge v4 keeps the approved symmetric tower-and-island composition'
   mirrorPair('low-step-left','low-step-right');
   mirrorPair('bottom-step-left','bottom-step-right');
 
-  const top=byId.get('top-center'),upper=byId.get('center-upper'),middle=byId.get('center-mid');
-  assert.deepEqual([top.x1,top.x2,top.y],[2200,2800,650]);
-  assert.deepEqual([upper.x1,upper.x2,upper.y],[2150,2850,2050]);
-  assert.deepEqual([middle.x1,middle.x2,middle.y],[2100,2900,3520]);
-  assert.ok(byId.get('left-cliff-top').x2<byId.get('high-step-left').x1,'left tower must be visually separated from the central ladder');
-  assert.ok(byId.get('high-step-right').x2<byId.get('right-cliff-top').x1,'right tower must be visually separated from the central ladder');
-  assert.ok(top.y<byId.get('upper-left').y&&byId.get('upper-left').y<byId.get('high-step-left').y,'upper crown must descend in concept order');
+  assert.deepEqual([byId.get('top-center').x1,byId.get('top-center').x2,byId.get('top-center').y],[2180,2980,675]);
+  assert.deepEqual([byId.get('center-upper').x1,byId.get('center-upper').x2,byId.get('center-upper').y],[2160,2960,2000]);
+  assert.deepEqual([byId.get('center-mid').x1,byId.get('center-mid').x2,byId.get('center-mid').y],[2110,2960,3450]);
+  assert.deepEqual([byId.get('left-bottom-exit').x1,byId.get('left-bottom-exit').x2,byId.get('left-bottom-exit').y],[780,1410,4890]);
+
+  assert.ok(byId.get('left-shoulder-high').x2<byId.get('high-step-left').x1,'left crown route must cross visible air');
+  assert.ok(byId.get('high-step-right').x2<byId.get('right-shoulder-high').x1,'right crown route must cross visible air');
+  assert.ok(byId.get('top-center').y<byId.get('upper-left').y&&byId.get('upper-left').y<byId.get('high-step-left').y,'upper crown must descend in concept order');
+  assert.ok(byId.get('center-upper').y<byId.get('mid-left-high').y&&byId.get('mid-left-high').y<byId.get('center-mid').y,'middle ladder must preserve the concept vertical rhythm');
+  assert.ok(byId.get('bottom-step-left').y>byId.get('low-step-left').y,'bottom stepping stones must sit below the support stones');
 });
 
 test('Huancavelica arena installs server-authoritative floating platforms and valid spawn supports',()=>{
