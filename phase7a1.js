@@ -1,13 +1,13 @@
 import { randomInt } from 'node:crypto';
 import { findRoomBySocket, getRoom, setAim, setTerrainPreset, startRoom } from './rooms.js';
 import {
-  advanceTurnIfDue6DV09 as baseAdvance,
-  fireProjectile6DV09 as baseFire,
-  jumpActivePlayer6DV09 as baseJump,
-  moveActivePlayer6DV09 as baseMove,
-  publicRoomState6DV09 as basePublic,
-  selectItem6DV09 as baseSelect
-} from './phase6d-v09.js';
+  advanceTurnIfDue6E as baseAdvance,
+  fireProjectile6E as baseFire,
+  jumpActivePlayer6E as baseJump,
+  moveActivePlayer6E as baseMove,
+  publicRoomState6E as basePublic,
+  selectItem6E as baseSelect
+} from './phase6e.js';
 
 const TERRAIN_IDS=['rolling','terraces','twinpeaks','basin','brokenridge','islands','canyon'];
 const EVENT_LIMIT=36;
