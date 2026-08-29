@@ -40,9 +40,11 @@ export function setTerrain9(id,terrain){
     if(result?.ok){result.room.phase10TerrainAlias=HUANCAVELICA_ID;for(const player of result.room.players??[])player.ready=false;}
     return result;
   }
-  const room=findRoomBySocket(id);
+  const room=findRoomBySocket(id),hadAlias=room?.phase10TerrainAlias===HUANCAVELICA_ID;
   if(room)room.phase10TerrainAlias=null;
-  return baseSetTerrain9(id,requested);
+  const result=baseSetTerrain9(id,requested);
+  if(result?.ok&&hadAlias)for(const player of result.room.players??[])player.ready=false;
+  return result;
 }
 
 export function rematchRoom9(id,options={}){
