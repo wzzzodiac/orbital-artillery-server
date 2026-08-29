@@ -31,9 +31,22 @@ const CLEARANCE=18;
 const MIN_LANDING_RUN=28;
 const DROP_MIN_MS=260;
 const DROP_MAX_MS=1100;
+const EMBED_TOLERANCE=10;
 
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const surface=(room,x)=>phase7aHotfixTestHooks.surface(room,x);
+
+function reconcileEmbeddedPlayer(room,player){
+  if(!room||!player?.spawn||player.alive===false)return false;
+  const x=clamp(Number(player.spawn.x)||0,40,WORLD_WIDTH-40),ground=surface(room,x);
+  if(ground>=WORLD_HEIGHT-1)return false;
+  const validY=Math.round(ground-GROUND_OFFSET),currentY=Number(player.spawn.y);
+  if(!Number.isFinite(currentY)||currentY<=validY+EMBED_TOLERANCE)return false;
+  player.spawn={...player.spawn,x,y:validY};
+  player.motion=null;
+  player.terrainReconciledAt=Date.now();
+  return true;
+}
 
 function requiredApex(room,from,toX,toY){
   const dx=toX-from.x;
@@ -109,7 +122,9 @@ function collectAfterTraversal(room,player,id){
 }
 
 export function moveActivePlayer9Traversal(id,direction){
-  const room=findRoomBySocket(id),player=room?.players.find(p=>p.id===id),from=player?.spawn?{...player.spawn}:null;
+  const room=findRoomBySocket(id),player=room?.players.find(p=>p.id===id);
+  if(room&&player)reconcileEmbeddedPlayer(room,player);
+  const from=player?.spawn?{...player.spawn}:null;
   const dir=Number(direction)<0?-1:Number(direction)>0?1:(player?.spawn?.facing||1);
   const result=baseMove(id,direction);
   if(result.ok||result.error!=='terrain_too_steep'||!room||!player||!from)return result;
@@ -119,7 +134,9 @@ export function moveActivePlayer9Traversal(id,direction){
 }
 
 export function jumpActivePlayer9Traversal(id,direction){
-  const room=findRoomBySocket(id),player=room?.players.find(p=>p.id===id),from=player?.spawn?{...player.spawn}:null;
+  const room=findRoomBySocket(id),player=room?.players.find(p=>p.id===id);
+  if(room&&player)reconcileEmbeddedPlayer(room,player);
+  const from=player?.spawn?{...player.spawn}:null;
   const dir=Number(direction)<0?-1:Number(direction)>0?1:(player?.spawn?.facing||1);
   const result=baseJump(id,direction);
   if(result.ok&&from&&player)maybeExtendTruncatedJump(result.room,player,from,dir);
@@ -128,7 +145,7 @@ export function jumpActivePlayer9Traversal(id,direction){
 
 export function publicRoomState9Traversal(room){
   const state=basePublic(room);
-  state.movementRules={...(state.movementRules??{}),adaptiveLedgeVault:true,naturalLedgeDrop:true,normalJumpDistance:NORMAL_JUMP_DISTANCE,adaptiveMaxDistance:EXTENDED_MAX_DISTANCE,adaptiveMaxApex:MAX_ADAPTIVE_APEX};
+  state.movementRules={...(state.movementRules??{}),adaptiveLedgeVault:true,naturalLedgeDrop:true,terrainEmbedRecovery:true,normalJumpDistance:NORMAL_JUMP_DISTANCE,adaptiveMaxDistance:EXTENDED_MAX_DISTANCE,adaptiveMaxApex:MAX_ADAPTIVE_APEX};
   return state;
 }
 
@@ -147,4 +164,4 @@ export {
   setTerrain9
 };
 
-export const phase9TraversalTestHooks=Object.freeze({requiredApex,landingHasRun,findAdaptiveLanding,maybeExtendTruncatedJump,naturalDropTarget,applyNaturalDrop});
+export const phase9TraversalTestHooks=Object.freeze({reconcileEmbeddedPlayer,requiredApex,landingHasRun,findAdaptiveLanding,maybeExtendTruncatedJump,naturalDropTarget,applyNaturalDrop});
