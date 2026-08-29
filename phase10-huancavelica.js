@@ -29,37 +29,43 @@ const MAX_LINK_JUMP=420;
 const MAX_PLATFORM_RISE=1050;
 const EDGE_MARGIN=24;
 
+// Alpine Ridge v3: composition follows the approved concept — two tall side towers,
+// a sparse central ladder of floating islands and an open void through the lower middle.
 const HUANCAVELICA_PLATFORMS=Object.freeze([
-  {id:'left-cliff-low',x1:90,x2:690,y:3900,depth:720,kind:'cliff',links:['left-low-1']},
-  {id:'left-low-1',x1:360,x2:980,y:3380,depth:520,kind:'cliff',links:['left-cliff-low','left-mid-1']},
-  {id:'left-mid-1',x1:180,x2:890,y:2860,depth:590,kind:'cliff',links:['left-low-1','left-mid-2']},
-  {id:'left-mid-2',x1:460,x2:1180,y:2330,depth:700,kind:'cliff',links:['left-mid-1','left-high','mid-left-low']},
-  {id:'left-high',x1:120,x2:980,y:1660,depth:760,kind:'cliff',links:['left-mid-2','upper-left']},
-  {id:'mid-left-low',x1:1170,x2:1720,y:3540,depth:320,kind:'island',links:['left-mid-2','mid-left','center-low','void-step-left']},
-  {id:'mid-left',x1:1370,x2:1930,y:2850,depth:410,kind:'island',links:['mid-left-low','mid-left-high','center-mid']},
-  {id:'mid-left-high',x1:1570,x2:2110,y:2140,depth:360,kind:'island',links:['mid-left','upper-left','center-upper']},
-  {id:'upper-left',x1:1370,x2:2070,y:1420,depth:310,kind:'island',links:['left-high','mid-left-high','top-left-step']},
-  {id:'top-left-step',x1:2030,x2:2270,y:1210,depth:210,kind:'island',links:['upper-left','top-center','center-upper']},
-  {id:'center-low',x1:2120,x2:2880,y:3860,depth:360,kind:'island',links:['mid-left-low','mid-right-low','center-mid','void-step-left','void-step-right']},
-  {id:'center-mid',x1:2070,x2:2930,y:3020,depth:430,kind:'island',links:['mid-left','mid-right','center-upper','center-low']},
-  {id:'center-upper',x1:2050,x2:2950,y:2050,depth:390,kind:'island',links:['mid-left-high','mid-right-high','center-mid','top-left-step','top-right-step']},
-  {id:'top-center',x1:2160,x2:2840,y:760,depth:460,kind:'island',links:['top-left-step','top-right-step']},
-  {id:'top-right-step',x1:2730,x2:2970,y:1210,depth:210,kind:'island',links:['top-center','upper-right','center-upper']},
-  {id:'upper-right',x1:2930,x2:3630,y:1420,depth:310,kind:'island',links:['right-high','mid-right-high','top-right-step']},
-  {id:'mid-right-high',x1:2890,x2:3430,y:2140,depth:360,kind:'island',links:['mid-right','upper-right','center-upper']},
-  {id:'mid-right',x1:3070,x2:3630,y:2850,depth:410,kind:'island',links:['mid-right-low','mid-right-high','center-mid']},
-  {id:'mid-right-low',x1:3280,x2:3830,y:3540,depth:320,kind:'island',links:['right-mid-2','mid-right','center-low','void-step-right']},
-  {id:'right-high',x1:4020,x2:4880,y:1660,depth:760,kind:'cliff',links:['right-mid-2','upper-right']},
-  {id:'right-mid-2',x1:3820,x2:4540,y:2330,depth:700,kind:'cliff',links:['right-mid-1','right-high','mid-right-low']},
-  {id:'right-mid-1',x1:4110,x2:4820,y:2860,depth:590,kind:'cliff',links:['right-low-1','right-mid-2']},
-  {id:'right-low-1',x1:4020,x2:4640,y:3380,depth:520,kind:'cliff',links:['right-cliff-low','right-mid-1']},
-  {id:'right-cliff-low',x1:4310,x2:4910,y:3900,depth:720,kind:'cliff',links:['right-low-1']},
-  {id:'void-step-left',x1:1730,x2:1980,y:4140,depth:230,kind:'island',links:['mid-left-low','center-low']},
-  {id:'void-step-right',x1:3020,x2:3270,y:4140,depth:230,kind:'island',links:['center-low','mid-right-low']}
+  {id:'left-base',x1:40,x2:720,y:4240,depth:650,kind:'cliff',links:['left-low']},
+  {id:'left-low',x1:100,x2:820,y:3520,depth:650,kind:'cliff',links:['left-base','left-mid']},
+  {id:'left-mid',x1:180,x2:900,y:2860,depth:620,kind:'cliff',links:['left-low','left-upper']},
+  {id:'left-upper',x1:120,x2:940,y:2180,depth:650,kind:'cliff',links:['left-mid','left-high']},
+  {id:'left-high',x1:60,x2:960,y:1540,depth:700,kind:'cliff',links:['left-upper','left-inner-high']},
+
+  {id:'left-inner-high',x1:1100,x2:1480,y:1740,depth:280,kind:'island',links:['left-high','upper-left-step','left-inner-mid']},
+  {id:'left-inner-mid',x1:1180,x2:1680,y:2780,depth:360,kind:'island',links:['left-inner-high','left-inner-low','center-upper']},
+  {id:'left-inner-low',x1:1480,x2:1950,y:3520,depth:340,kind:'island',links:['left-inner-mid','center-mid','left-bottom-step']},
+  {id:'upper-left-step',x1:1750,x2:2150,y:1240,depth:280,kind:'island',links:['left-inner-high','top-center','center-upper']},
+  {id:'left-bottom-step',x1:1720,x2:2050,y:4050,depth:250,kind:'island',links:['left-inner-low','center-low','left-bottom-island']},
+  {id:'left-bottom-island',x1:1850,x2:2150,y:4520,depth:260,kind:'island',links:['left-bottom-step','center-low']},
+
+  {id:'top-center',x1:2200,x2:2800,y:720,depth:440,kind:'island',links:['upper-left-step','upper-right-step']},
+  {id:'center-upper',x1:2100,x2:2900,y:2100,depth:420,kind:'island',links:['upper-left-step','upper-right-step','left-inner-mid','right-inner-mid','center-mid']},
+  {id:'center-mid',x1:2050,x2:2950,y:3150,depth:420,kind:'island',links:['left-inner-low','right-inner-low','center-upper','center-low']},
+  {id:'center-low',x1:2200,x2:2800,y:4060,depth:320,kind:'island',links:['center-mid','left-bottom-step','right-bottom-step','left-bottom-island','right-bottom-island']},
+
+  {id:'right-bottom-island',x1:2850,x2:3150,y:4520,depth:260,kind:'island',links:['right-bottom-step','center-low']},
+  {id:'right-bottom-step',x1:2950,x2:3280,y:4050,depth:250,kind:'island',links:['right-inner-low','center-low','right-bottom-island']},
+  {id:'upper-right-step',x1:2850,x2:3250,y:1240,depth:280,kind:'island',links:['top-center','right-inner-high','center-upper']},
+  {id:'right-inner-high',x1:3520,x2:3900,y:1740,depth:280,kind:'island',links:['right-high','upper-right-step','right-inner-mid']},
+  {id:'right-inner-mid',x1:3320,x2:3820,y:2780,depth:360,kind:'island',links:['right-inner-high','right-inner-low','center-upper']},
+  {id:'right-inner-low',x1:3050,x2:3520,y:3520,depth:340,kind:'island',links:['right-inner-mid','center-mid','right-bottom-step']},
+
+  {id:'right-high',x1:4040,x2:4940,y:1540,depth:700,kind:'cliff',links:['right-upper','right-inner-high']},
+  {id:'right-upper',x1:4060,x2:4880,y:2180,depth:650,kind:'cliff',links:['right-high','right-mid']},
+  {id:'right-mid',x1:4100,x2:4820,y:2860,depth:620,kind:'cliff',links:['right-upper','right-low']},
+  {id:'right-low',x1:4180,x2:4900,y:3520,depth:650,kind:'cliff',links:['right-mid','right-base']},
+  {id:'right-base',x1:4280,x2:4960,y:4240,depth:650,kind:'cliff',links:['right-low']}
 ]);
 
 const PLATFORM_BY_ID=new Map(HUANCAVELICA_PLATFORMS.map(p=>[p.id,p]));
-const SPAWN_PLATFORM_IDS=['left-high','right-high','mid-left','mid-right','center-low','center-mid','mid-left-low','mid-right-low'];
+const SPAWN_PLATFORM_IDS=['left-high','right-high','left-inner-mid','right-inner-mid','center-mid','center-low','left-inner-low','right-inner-low'];
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const isHuancavelica=room=>room?.phase10TerrainAlias===HUANCAVELICA_ID||room?.arena?.phase10Theme===HUANCAVELICA_ID;
 
@@ -127,14 +133,14 @@ function adjustProjectileToPlatforms(room,q){
 function fireOnHuancavelica(id){const room=findRoomBySocket(id);installHuancavelicaArena(room);const result=baseFireProjectile9(id);if(result?.ok&&isHuancavelica(result.room)){installHuancavelicaArena(result.room);adjustProjectileToPlatforms(result.room,result.room.match?.projectile);}return result;}
 function advanceOnHuancavelica(code,now=Date.now()){const room=getRoom(code);const changed=baseAdvanceTurnIfDue9(code,now),target=changed??room;if(target&&isHuancavelica(target)){installHuancavelicaArena(target);snapPickupsToPlatforms(target);}return changed;}
 
-function decoratePublicState(room,state){const presets=[...(state?.terrainPresets??[])];if(!presets.some(entry=>entry.id===HUANCAVELICA_ID))presets.push({id:HUANCAVELICA_ID,name:HUANCAVELICA_NAME});state.terrainPresets=presets;if(isHuancavelica(room)){installHuancavelicaArena(room);state=basePublicRoomState9(room);state.terrainPresets=presets;state.terrainPreset=HUANCAVELICA_ID;state.arena={...(state.arena??{}),terrainPreset:HUANCAVELICA_ID,terrainName:HUANCAVELICA_NAME,phase10Theme:HUANCAVELICA_ID,collisionModel:'multilayer-platforms-v1',platforms:publicPlatforms(room),voidFloor:true,legacyCollisionBase:COLLISION_BASE};state.players=(state.players??[]).map(p=>({...p,phase10PlatformId:room.players.find(source=>source.id===p.id)?.phase10PlatformId??null}));state.phase10Map={id:HUANCAVELICA_ID,name:HUANCAVELICA_NAME,visualTheme:'bright-alpine-floating-islands',collisionModel:'multilayer-platforms-v1',platformCount:HUANCAVELICA_PLATFORMS.length,allPrimaryPlatformsReachableByLinks:true,freeMovement:true,normalJumpDistance:NORMAL_JUMP_DISTANCE,adaptiveMaxLinkDistance:MAX_LINK_JUMP,experimental:true};}return state;}
+function decoratePublicState(room,state){const presets=[...(state?.terrainPresets??[])];if(!presets.some(entry=>entry.id===HUANCAVELICA_ID))presets.push({id:HUANCAVELICA_ID,name:HUANCAVELICA_NAME});state.terrainPresets=presets;if(isHuancavelica(room)){installHuancavelicaArena(room);state=basePublicRoomState9(room);state.terrainPresets=presets;state.terrainPreset=HUANCAVELICA_ID;state.arena={...(state.arena??{}),terrainPreset:HUANCAVELICA_ID,terrainName:HUANCAVELICA_NAME,phase10Theme:HUANCAVELICA_ID,collisionModel:'multilayer-platforms-v1',platforms:publicPlatforms(room),voidFloor:true,legacyCollisionBase:COLLISION_BASE};state.players=(state.players??[]).map(p=>({...p,phase10PlatformId:room.players.find(source=>source.id===p.id)?.phase10PlatformId??null}));state.phase10Map={id:HUANCAVELICA_ID,name:HUANCAVELICA_NAME,visualTheme:'bright-alpine-floating-islands',layoutRevision:'alpine-ridge-concept-v3',collisionModel:'multilayer-platforms-v1',platformCount:HUANCAVELICA_PLATFORMS.length,allPrimaryPlatformsReachableByLinks:true,freeMovement:true,normalJumpDistance:NORMAL_JUMP_DISTANCE,adaptiveMaxLinkDistance:MAX_LINK_JUMP,experimental:true};}return state;}
 export function publicRoomState9(room){if(isHuancavelica(room))installHuancavelicaArena(room);return decoratePublicState(room,basePublicRoomState9(room));}
-export function setTerrain9(id,terrain){const requested=String(terrain??'').toLowerCase();if(requested===HUANCAVELICA_ID){const result=baseSetTerrain9(id,COLLISION_BASE);if(result?.ok){result.room.phase10TerrainAlias=HUANCAVELICA_ID;result.room.phase10MapRevision='10c-multilayer-v2';for(const player of result.room.players??[]){player.ready=false;player.phase10PlatformId=null;}}return result;}const room=findRoomBySocket(id);if(room){room.phase10TerrainAlias=null;for(const player of room.players??[])player.phase10PlatformId=null;}return baseSetTerrain9(id,requested);}
+export function setTerrain9(id,terrain){const requested=String(terrain??'').toLowerCase();if(requested===HUANCAVELICA_ID){const result=baseSetTerrain9(id,COLLISION_BASE);if(result?.ok){result.room.phase10TerrainAlias=HUANCAVELICA_ID;result.room.phase10MapRevision='10c-alpine-ridge-v3';for(const player of result.room.players??[]){player.ready=false;player.phase10PlatformId=null;}}return result;}const room=findRoomBySocket(id);if(room){room.phase10TerrainAlias=null;for(const player of room.players??[])player.phase10PlatformId=null;}return baseSetTerrain9(id,requested);}
 export function moveActivePlayer9(id,direction){const room=findRoomBySocket(id);return isHuancavelica(room)?moveOnHuancavelica(id,direction):baseMoveActivePlayer9(id,direction);}
 export function jumpActivePlayer9(id,direction){const room=findRoomBySocket(id);return isHuancavelica(room)?jumpOnHuancavelica(id,direction):baseJumpActivePlayer9(id,direction);}
 export function fireProjectile9(id){const room=findRoomBySocket(id);return isHuancavelica(room)?fireOnHuancavelica(id):baseFireProjectile9(id);}
 export function advanceTurnIfDue9(code,now=Date.now()){return advanceOnHuancavelica(code,now);}
-export function rematchRoom9(id,options={}){const room=findRoomBySocket(id),keepAlias=room?.phase10TerrainAlias===HUANCAVELICA_ID&&!options?.randomMap;const result=baseRematchRoom9(id,options);if(result?.ok){result.room.phase10TerrainAlias=keepAlias?HUANCAVELICA_ID:null;result.room.phase10MapRevision=keepAlias?'10c-multilayer-v2':null;for(const player of result.room.players??[])player.phase10PlatformId=null;if(keepAlias)installHuancavelicaArena(result.room);}return result;}
+export function rematchRoom9(id,options={}){const room=findRoomBySocket(id),keepAlias=room?.phase10TerrainAlias===HUANCAVELICA_ID&&!options?.randomMap;const result=baseRematchRoom9(id,options);if(result?.ok){result.room.phase10TerrainAlias=keepAlias?HUANCAVELICA_ID:null;result.room.phase10MapRevision=keepAlias?'10c-alpine-ridge-v3':null;for(const player of result.room.players??[])player.phase10PlatformId=null;if(keepAlias)installHuancavelicaArena(result.room);}return result;}
 
 export {disconnectPlayer9,phase9AirPickupTestHooks,phase9TestHooks,phase9TraversalTestHooks,selectItem9,setAim9};
 export const phase10HuancavelicaTestHooks=Object.freeze({HUANCAVELICA_ID,HUANCAVELICA_NAME,COLLISION_BASE,HUANCAVELICA_PLATFORMS,decoratePublicState,installHuancavelicaArena,platformSurface,topPlatformAtX,nearestPlatformForPoint,firstPlatformImpact,adjustProjectileToPlatforms});
