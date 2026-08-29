@@ -157,7 +157,7 @@ function runAdvanceWithoutExplosionCollection(code,now){
 
 export function publicRoomState9(room){
   ensurePhase9(room);let state=basePublic(room);if(maintainPhase9Pickups(room))state=basePublic(room);normalizeHealLabels(room);
-  state.version='0.9.2-beta';state.phase='9';
+  state.version='0.9.6-beta';state.phase='9';
   state.pickups=(state.pickups??[]).map(({phase6cPoolRolled,phase6dPoolRolled,phase6ePoolRolled,phase9FairPlaced,...box})=>box.type==='heal'?{...box,label:HEAL_LABEL}:box);
   state.players=(state.players??[]).map(player=>({...player,inventory:(player.inventory??[]).map(item=>item?.type==='heal'?{...item,label:HEAL_LABEL}:item)}));
   state.itemPool=PHASE6E_ITEM_POOL.map(item=>item.type==='heal'?{...item,label:HEAL_LABEL}:{...item});
