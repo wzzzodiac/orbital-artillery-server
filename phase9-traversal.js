@@ -11,7 +11,7 @@ import {
   selectItem9,
   setAim9,
   setTerrain9
-} from './phase9.js';
+} from './phase9-core.js';
 
 const WORLD_WIDTH=5000;
 const WORLD_HEIGHT=5000;
