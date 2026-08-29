@@ -1,12 +1,12 @@
 import { findRoomBySocket, getRoom } from './rooms.js';
 import {
-  advanceTurnIfDue6D as baseAdvance,
-  fireProjectile6D as baseFire,
-  jumpActivePlayer6D as baseJump,
-  moveActivePlayer6D as baseMove,
-  publicRoomState6D as basePublic,
-  selectItem6D as baseSelect
-} from './phase6d.js';
+  advanceTurnIfDue6E as baseAdvance,
+  fireProjectile6E as baseFire,
+  jumpActivePlayer6E as baseJump,
+  moveActivePlayer6E as baseMove,
+  publicRoomState6E as basePublic,
+  selectItem6E as baseSelect
+} from './phase6e.js';
 
 const MAX_HP=100;
 const BASIC_DAMAGE=10;
