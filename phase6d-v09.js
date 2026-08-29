@@ -143,9 +143,10 @@ function correctAirStrike(room,q,beforeHp,beforeApplied,now){
   const shieldHits=new Set(q.v09ShieldHitPlayerIds??[]);
   for(const player of room.players){
     if(snap.alive[player.id]===false||!player.spawn||isVoidDeath(player))continue;
+    const reference=snap.spawn[player.id]??player.spawn;
     let hits=0;
     for(const shell of shells){
-      const distance=Math.hypot(player.spawn.x-shell.x,(player.spawn.y-10)-shell.y);
+      const distance=Math.hypot(reference.x-shell.x,(reference.y-10)-shell.y);
       if(distance<=VEHICLE_HIT_RADIUS)hits+=1;
     }
     const startHp=beforeHp[player.id];if(startHp==null)continue;
