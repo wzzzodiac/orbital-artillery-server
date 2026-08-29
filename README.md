@@ -1,24 +1,25 @@
-# Orbital Artillery Server
+# Carabayllo Secret Wars Server
 
-Authoritative multiplayer backend scaffold for Orbital Artillery.
+Authoritative multiplayer backend for **Carabayllo Secret Wars**.
+
+Repository name intentionally remains `wzzzodiac/orbital-artillery-server`; the frontend repository remains `wzzzodiac/orbital-artillery`.
 
 ## Current status
 
-**Phase 0 — scaffold only.** The process can boot and expose a health endpoint, but room/gameplay events are intentionally not implemented yet.
+**v0.9.8 Release Candidate / Phase 9 mechanical baseline.**
 
-Target architecture:
+Current architecture:
 
 - Node.js
 - Socket.IO/WebSockets
 - Google Cloud Run
 - `min instances = 0`
-- initially `max instances = 1`
-- in-memory rooms for the MVP
+- intended `max instances = 1`
+- in-memory private rooms
 - no accounts
 - no database
-- 2–8 temporary players per private room
-
-The browser client lives in the separate `orbital-artillery` repository.
+- 2–8 temporary players per room
+- authoritative turns, movement, projectiles, damage, pickups, AFK voting, stats and rematch state
 
 ## Local start
 
@@ -33,10 +34,14 @@ Health check:
 GET /health
 ```
 
-## First implementation milestone
+## Current gameplay notes
 
-Implement private room creation/joining, temporary player names, host assignment, ready state and disconnect cleanup. The target test is eight browser tabs/devices connected to the same room before any artillery gameplay is added.
+- pickup contact includes a 74-unit vehicle/pickup touch threshold
+- jump/fall traversal performs swept pickup-hitbox checks so airborne grazing can collect a box
+- AFK F1 eligibility starts only after 20 continuous seconds without valid activity from the active player; new activity resets the inactivity window and clears votes
+- Cluster child blasts and Air Strike shells apply independent radial damage
+- Nuke visual timing remains 5 seconds warning + 5 seconds active beam
 
-## Cost constraint
+## Deployment note
 
-The MVP is designed around a zero-euro target while usage remains inside free tiers. Cloud Run deployment settings and billing alerts must be configured manually before public multiplayer testing.
+GitHub CI validates repository code/tests but does not itself prove that Google Cloud Run currently serves the exact latest backend commit. Runtime deployment parity is checked separately when needed.
