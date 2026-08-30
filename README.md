@@ -21,6 +21,10 @@ Current architecture:
 - 2–8 temporary players per room
 - authoritative turns, movement, projectiles, damage, pickups, AFK voting, stats and rematch state
 
+### Huancavelica Simulator authority
+
+`phase10-huancavelica.js` owns the production Alpine Ridge platform graph, traversal links, spawns and projectile/platform intersection. Destruction remains authoritative: every crater is normalized with an impact height and `phase10PlatformId`, so a blast deforms only the island it actually hit even when several platforms overlap at the same world X coordinate. Public clients receive the unchanged base platform silhouettes plus crater data and reconstruct the same visible destructible surface.
+
 ## Local start
 
 ```bash
@@ -45,3 +49,4 @@ GET /health
 ## Deployment note
 
 GitHub CI validates repository code/tests but does not itself prove that Google Cloud Run currently serves the exact latest backend commit. Runtime deployment parity is checked separately when needed.
+

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { phase10HuancavelicaTestHooks } from '../phase10-huancavelica.js';
 
-const { HUANCAVELICA_PLATFORMS, installHuancavelicaArena } = phase10HuancavelicaTestHooks;
+const { HUANCAVELICA_PLATFORMS, bindCraterToPlatform, decoratePublicState, firstPlatformImpact, installHuancavelicaArena, platformSurface } = phase10HuancavelicaTestHooks;
 const byId=new Map(HUANCAVELICA_PLATFORMS.map(p=>[p.id,p]));
 const routeFits=(from,to)=>{
   const horizontalGap=Math.max(0,to.x1-from.x2,from.x1-to.x2);
@@ -82,7 +82,7 @@ test('Huancavelica arena installs server-authoritative floating platforms and va
   installHuancavelicaArena(room);
   assert.equal(room.arena.phase10Theme,'huancavelica');
   assert.equal(room.arena.terrainName,'Huancavelica Simulator');
-  assert.equal(room.arena.collisionModel,'multilayer-platforms-v1');
+  assert.equal(room.arena.collisionModel,'multilayer-platforms-v2');
   assert.equal(room.arena.voidFloor,true);
   assert.equal(room.arena.platforms.length,HUANCAVELICA_PLATFORMS.length);
   for(const player of room.players){
@@ -92,3 +92,33 @@ test('Huancavelica arena installs server-authoritative floating platforms and va
     assert.ok(player.spawn.y<5000);
   }
 });
+
+test('Huancavelica is available in the public map pool as a production map',()=>{
+  const state=decoratePublicState({}, {terrainPresets:[]});
+  assert.deepEqual(state.terrainPresets,[{id:'huancavelica',name:'Huancavelica Simulator'}]);
+});
+
+test('destruction deforms only the vertically stacked platform that was hit',()=>{
+  const room={arena:{worldHeight:5000,craters:[{id:'top-hit',x:2500,y:675,radius:180,depth:165,phase10PlatformId:'top-center'}]}};
+  const top=byId.get('top-center'),middle=byId.get('center-upper');
+  assert.equal(platformSurface(room,top,2500),840);
+  assert.equal(platformSurface(room,middle,2500),2000,'a crater in the crown must not cut the island below it');
+});
+
+test('legacy crater records are bound to one authoritative platform before publication',()=>{
+  const crater={id:'legacy-impact',x:2500,radius:135,depth:165};
+  const room={arena:{worldHeight:5000,craters:[crater]}};
+  bindCraterToPlatform(room,crater,[{x:2500,y:2000,platformId:'center-upper'}]);
+  assert.equal(crater.phase10PlatformId,'center-upper');
+  assert.equal(crater.y,2000);
+});
+
+test('projectile sampling collides with the visible upper crown before lower stacked islands',()=>{
+  const room={arena:{worldHeight:5000,craters:[]}};
+  const projectile={startX:2500,startY:100,vx:0,vy:0,windAccel:0,gravity:480};
+  const impact=firstPlatformImpact(room,projectile);
+  assert.ok(impact);
+  assert.equal(impact.platformId,'top-center');
+  assert.ok(Math.abs(impact.y-675)<1);
+});
+

@@ -39,22 +39,22 @@ const EDGE_MARGIN=24;
 const HUANCAVELICA_PLATFORMS=Object.freeze([
   // LEFT TOWER — concept shoulder, main cap, shelves and bottom exit.
   {id:'left-shoulder-high',x1:900,x2:1260,y:1435,depth:300,kind:'cliff',links:['left-cliff-top','high-step-left']},
-  {id:'left-cliff-top',x1:0,x2:980,y:1665,depth:860,kind:'cliff',links:['left-shoulder-high','left-upper-ledge']},
-  {id:'left-upper-ledge',x1:440,x2:980,y:2150,depth:500,kind:'cliff',links:['left-cliff-top','left-cliff-mid','mid-left-high']},
+  {id:'left-cliff-top',x1:0,x2:980,y:1665,depth:930,kind:'cliff',links:['left-shoulder-high','left-upper-ledge']},
+  {id:'left-upper-ledge',x1:440,x2:980,y:2150,depth:680,kind:'cliff',links:['left-cliff-top','left-cliff-mid','mid-left-high']},
   {id:'left-cliff-mid',x1:0,x2:430,y:2780,depth:780,kind:'cliff',links:['left-upper-ledge','left-transition']},
-  {id:'left-transition',x1:450,x2:830,y:3190,depth:390,kind:'cliff',links:['left-cliff-mid','left-lower-ledge','mid-left-high']},
+  {id:'left-transition',x1:450,x2:830,y:3190,depth:700,kind:'cliff',links:['left-cliff-mid','left-lower-ledge','mid-left-high']},
   {id:'left-lower-ledge',x1:0,x2:480,y:3820,depth:690,kind:'cliff',links:['left-transition','left-bottom-ledge']},
-  {id:'left-bottom-ledge',x1:500,x2:920,y:4350,depth:390,kind:'cliff',links:['left-lower-ledge','left-bottom-exit']},
+  {id:'left-bottom-ledge',x1:500,x2:920,y:4350,depth:600,kind:'cliff',links:['left-lower-ledge','left-bottom-exit']},
   {id:'left-bottom-exit',x1:780,x2:1410,y:4890,depth:270,kind:'island',links:['left-bottom-ledge','low-step-left']},
 
   // RIGHT TOWER — physical mirror of the left tower.
   {id:'right-shoulder-high',x1:3740,x2:4100,y:1435,depth:300,kind:'cliff',links:['right-cliff-top','high-step-right']},
-  {id:'right-cliff-top',x1:4020,x2:5000,y:1665,depth:860,kind:'cliff',links:['right-shoulder-high','right-upper-ledge']},
-  {id:'right-upper-ledge',x1:4020,x2:4560,y:2150,depth:500,kind:'cliff',links:['right-cliff-top','right-cliff-mid','mid-right-high']},
+  {id:'right-cliff-top',x1:4020,x2:5000,y:1665,depth:930,kind:'cliff',links:['right-shoulder-high','right-upper-ledge']},
+  {id:'right-upper-ledge',x1:4020,x2:4560,y:2150,depth:680,kind:'cliff',links:['right-cliff-top','right-cliff-mid','mid-right-high']},
   {id:'right-cliff-mid',x1:4570,x2:5000,y:2780,depth:780,kind:'cliff',links:['right-upper-ledge','right-transition']},
-  {id:'right-transition',x1:4170,x2:4550,y:3190,depth:390,kind:'cliff',links:['right-cliff-mid','right-lower-ledge','mid-right-high']},
+  {id:'right-transition',x1:4170,x2:4550,y:3190,depth:700,kind:'cliff',links:['right-cliff-mid','right-lower-ledge','mid-right-high']},
   {id:'right-lower-ledge',x1:4520,x2:5000,y:3820,depth:690,kind:'cliff',links:['right-transition','right-bottom-ledge']},
-  {id:'right-bottom-ledge',x1:4080,x2:4500,y:4350,depth:390,kind:'cliff',links:['right-lower-ledge','right-bottom-exit']},
+  {id:'right-bottom-ledge',x1:4080,x2:4500,y:4350,depth:600,kind:'cliff',links:['right-lower-ledge','right-bottom-exit']},
   {id:'right-bottom-exit',x1:3590,x2:4220,y:4890,depth:270,kind:'island',links:['right-bottom-ledge','low-step-right']},
 
   // UPPER CROWN — follows the concept's red-route silhouette.
@@ -84,9 +84,11 @@ const SPAWN_PLATFORM_IDS=['left-cliff-top','right-cliff-top','mid-left-high','mi
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const isHuancavelica=room=>room?.phase10TerrainAlias===HUANCAVELICA_ID||room?.arena?.phase10Theme===HUANCAVELICA_ID;
 
-function craterAdjustedY(room,platform,x){
+function craterAdjustedY(room,platform,x,ignoredCrater=null){
   let y=platform.y;
   for(const crater of room?.arena?.craters??[]){
+    if(crater===ignoredCrater)continue;
+    if(crater.phase10PlatformId&&crater.phase10PlatformId!==platform.id)continue;
     const dx=Math.abs(Number(x)-Number(crater.x));
     if(dx>=Number(crater.radius??0))continue;
     const cy=Number(crater.y);
@@ -101,12 +103,12 @@ function platformContains(platform,x,margin=0){return Boolean(platform&&x>=platf
 function platformSurface(room,platform,x){return craterAdjustedY(room,platform,clamp(x,platform.x1,platform.x2));}
 function topPlatformAtX(room,x){const matches=HUANCAVELICA_PLATFORMS.filter(p=>platformContains(p,x)).map(p=>({platform:p,y:platformSurface(room,p,x)})).sort((a,b)=>a.y-b.y);return matches[0]??null;}
 function nearestPlatformForPoint(room,x,y){let best=null,bestScore=Infinity;for(const platform of HUANCAVELICA_PLATFORMS){const px=clamp(x,platform.x1,platform.x2),py=platformSurface(room,platform,px),score=Math.abs(px-x)+Math.abs(py-y)*.6;if(score<bestScore){bestScore=score;best={platform,x:px,y:py};}}return best;}
-function publicPlatforms(room){return HUANCAVELICA_PLATFORMS.map(p=>({...p,y:platformSurface(room,p,(p.x1+p.x2)/2),links:[...p.links]}));}
+function publicPlatforms(){return HUANCAVELICA_PLATFORMS.map(p=>({...p,links:[...p.links]}));}
 function snapPickupsToPlatforms(room){if(!isHuancavelica(room))return;for(const box of room.pickups??[]){const support=topPlatformAtX(room,Number(box.x));if(support)box.y=Math.round(support.y-24);}}
 
 function installHuancavelicaArena(room){
   if(!isHuancavelica(room)||!room?.arena)return room;
-  room.arena.phase10Theme=HUANCAVELICA_ID;room.arena.terrainName=HUANCAVELICA_NAME;room.arena.collisionModel='multilayer-platforms-v1';room.arena.platforms=publicPlatforms(room);room.arena.voidFloor=true;room.arena.legacyCollisionBase=COLLISION_BASE;
+  room.arena.phase10Theme=HUANCAVELICA_ID;room.arena.terrainName=HUANCAVELICA_NAME;room.arena.collisionModel='multilayer-platforms-v2';room.arena.platforms=publicPlatforms();room.arena.voidFloor=true;room.arena.legacyCollisionBase=COLLISION_BASE;
   const count=Math.max(1,room.players.length);
   room.players.forEach((player,index)=>{let platform=platformAt(player.phase10PlatformId);if(!platform){platform=platformAt(SPAWN_PLATFORM_IDS[index%SPAWN_PLATFORM_IDS.length]);player.phase10PlatformId=platform.id;const lane=(index+1)/(count+1),x=Math.round(platform.x1+(platform.x2-platform.x1)*clamp(lane,.18,.82));player.spawn={x,y:Math.round(platformSurface(room,platform,x)-GROUND_OFFSET),facing:x<WORLD_WIDTH/2?1:-1};player.motion=null;}else if(player.spawn&&player.alive!==false&&Number(player.spawn.y)<=WORLD_HEIGHT){player.spawn.y=Math.round(platformSurface(room,platform,player.spawn.x)-GROUND_OFFSET);}});
   snapPickupsToPlatforms(room);return room;
@@ -140,22 +142,55 @@ function adjustProjectileToPlatforms(room,q){
   if(q.weaponType==='airstrike'){for(const shell of q.airStrikeShells??[]){const support=topPlatformAtX(room,Number(shell.x));if(support){shell.y=support.y;shell.phase10PlatformId=support.platform.id;changed=true;}}return changed;}
   if(q.weaponType==='triple'&&Array.isArray(q.volley)){for(const shot of q.volley){const impact=firstPlatformImpact(room,shot);if(impact)changed=applyImpact(shot,impact)||changed;}q.specialResolveAt=Math.max(...q.volley.map(v=>Number(v.impactAt??0)));q.resolveAt=q.specialResolveAt+900;return changed;}
   const oldX=Number(q.impactX),oldY=Number(q.impactY),impact=firstPlatformImpact(room,q);if(impact)changed=applyImpact(q,impact)||changed;
-  if(q.weaponType==='cluster'&&changed){const dx=Number(q.impactX)-oldX,dy=Number(q.impactY)-oldY;q.clusterImpacts=(q.clusterImpacts??[]).map((child,index)=>({...child,x:clamp(Number(child.x)+dx,0,WORLD_WIDTH),y:clamp(Number(child.y)+dy,100,WORLD_HEIGHT),visualStartAt:q.impactAt+667+index*167,impactAt:q.impactAt+667+index*167+1333}));q.specialResolveAt=Math.max(...q.clusterImpacts.map(v=>v.impactAt));q.resolveAt=q.specialResolveAt+900;}
+  if(q.weaponType==='cluster'&&changed){const dx=Number(q.impactX)-oldX,dy=Number(q.impactY)-oldY;q.clusterImpacts=(q.clusterImpacts??[]).map((child,index)=>{const x=clamp(Number(child.x)+dx,0,WORLD_WIDTH),candidateY=clamp(Number(child.y)+dy,100,WORLD_HEIGHT),support=nearestPlatformForPoint(room,x,candidateY);return{...child,x,y:support?.y??candidateY,phase10PlatformId:support?.platform?.id??null,visualStartAt:q.impactAt+667+index*167,impactAt:q.impactAt+667+index*167+1333};});q.specialResolveAt=Math.max(...q.clusterImpacts.map(v=>v.impactAt));q.resolveAt=q.specialResolveAt+900;}
   else if(q.weaponType==='nuke'&&changed){q.targetX=q.impactX;q.targetY=q.impactY;if(q.nukeBeam)q.nukeBeam={...q.nukeBeam,bx:q.impactX,by:q.impactY};q.targetLockedAt=q.impactAt;q.warningUntil=q.impactAt+5000;q.beamAt=q.warningUntil;q.beamUntil=q.beamAt+5000;q.resolveAt=q.beamUntil+1500;}
   else if(changed)q.resolveAt=Math.max(Number(q.resolveAt??0),q.impactAt+900);return changed;
 }
 
-function fireOnHuancavelica(id){const room=findRoomBySocket(id);installHuancavelicaArena(room);const result=baseFireProjectile9(id);if(result?.ok&&isHuancavelica(result.room)){installHuancavelicaArena(result.room);adjustProjectileToPlatforms(result.room,result.room.match?.projectile);}return result;}
-function advanceOnHuancavelica(code,now=Date.now()){const room=getRoom(code);const changed=baseAdvanceTurnIfDue9(code,now),target=changed??room;if(target&&isHuancavelica(target)){installHuancavelicaArena(target);snapPickupsToPlatforms(target);}return changed;}
+function projectileImpactHints(room,q){
+  if(!q)return[];
+  const hints=[];
+  const add=entry=>{if(!entry||!Number.isFinite(Number(entry.x??entry.impactX)))return;const x=Number(entry.x??entry.impactX),y=Number(entry.y??entry.impactY),preferred=platformAt(entry.phase10PlatformId);const support=preferred?{platform:preferred,x,y:platformSurface(room,preferred,x)}:nearestPlatformForPoint(room,x,Number.isFinite(y)?y:WORLD_HEIGHT/2);if(support)hints.push({x,y:Number.isFinite(y)?y:support.y,platformId:support.platform.id});};
+  add(q);
+  for(const shot of q.volley??[])add(shot);
+  for(const child of q.clusterImpacts??[])add(child);
+  for(const shell of q.airStrikeShells??[])add(shell);
+  if(q.weaponType==='nuke'&&q.nukeBeam){
+    const {ax,ay,bx,by}=q.nukeBeam,span=Number(bx)-Number(ax);
+    if(Math.abs(span)>1)for(const platform of HUANCAVELICA_PLATFORMS){const x=(platform.x1+platform.x2)/2,y=Number(ay)+(Number(by)-Number(ay))*((x-Number(ax))/span);if(y>=platform.y-180&&y<=platform.y+platform.depth)add({x,y,phase10PlatformId:platform.id});}
+  }
+  return hints;
+}
 
-function decoratePublicState(room,state){const presets=[...(state?.terrainPresets??[])];if(!presets.some(entry=>entry.id===HUANCAVELICA_ID))presets.push({id:HUANCAVELICA_ID,name:HUANCAVELICA_NAME});state.terrainPresets=presets;if(isHuancavelica(room)){installHuancavelicaArena(room);state=basePublicRoomState9(room);state.terrainPresets=presets;state.terrainPreset=HUANCAVELICA_ID;state.arena={...(state.arena??{}),terrainPreset:HUANCAVELICA_ID,terrainName:HUANCAVELICA_NAME,phase10Theme:HUANCAVELICA_ID,collisionModel:'multilayer-platforms-v1',platforms:publicPlatforms(room),voidFloor:true,legacyCollisionBase:COLLISION_BASE};state.players=(state.players??[]).map(p=>({...p,phase10PlatformId:room.players.find(source=>source.id===p.id)?.phase10PlatformId??null}));state.phase10Map={id:HUANCAVELICA_ID,name:HUANCAVELICA_NAME,visualTheme:'bright-alpine-floating-islands',collisionModel:'multilayer-platforms-v1',platformCount:HUANCAVELICA_PLATFORMS.length,allPrimaryPlatformsReachableByLinks:true,freeMovement:true,normalJumpDistance:NORMAL_JUMP_DISTANCE,adaptiveMaxLinkDistance:MAX_LINK_JUMP,experimental:true};}return state;}
+function bindCraterToPlatform(room,crater,hints=[]){
+  if(crater.phase10PlatformId&&Number.isFinite(Number(crater.y)))return crater;
+  const x=Number(crater.x),craterY=Number(crater.y);
+  const ranked=hints.map(hint=>({...hint,score:Math.abs(hint.x-x)+(Number.isFinite(craterY)?Math.abs(hint.y-craterY)*.6:0)})).sort((a,b)=>a.score-b.score);
+  let platform=platformAt(ranked[0]?.platformId);
+  if(!platform&&Number.isFinite(craterY))platform=nearestPlatformForPoint(room,x,craterY)?.platform??null;
+  if(!platform)platform=topPlatformAtX(room,x)?.platform??nearestPlatformForPoint(room,x,WORLD_HEIGHT/2)?.platform??null;
+  if(!platform)return crater;
+  crater.phase10PlatformId=platform.id;
+  crater.y=Math.round(craterAdjustedY(room,platform,clamp(x,platform.x1,platform.x2),crater));
+  return crater;
+}
+
+function bindNewCraters(room,knownIds,hints){
+  for(const crater of room?.arena?.craters??[])if(!knownIds.has(crater.id)||!crater.phase10PlatformId)bindCraterToPlatform(room,crater,hints);
+}
+
+function fireOnHuancavelica(id){const room=findRoomBySocket(id);installHuancavelicaArena(room);const result=baseFireProjectile9(id);if(result?.ok&&isHuancavelica(result.room)){installHuancavelicaArena(result.room);adjustProjectileToPlatforms(result.room,result.room.match?.projectile);}return result;}
+function advanceOnHuancavelica(code,now=Date.now()){const room=getRoom(code),knownIds=new Set(room?.arena?.craters?.map(c=>c.id)??[]),hints=projectileImpactHints(room,room?.match?.projectile),changed=baseAdvanceTurnIfDue9(code,now),target=changed??room;if(target&&isHuancavelica(target)){bindNewCraters(target,knownIds,hints);installHuancavelicaArena(target);snapPickupsToPlatforms(target);}return changed;}
+
+function decoratePublicState(room,state){const presets=[...(state?.terrainPresets??[])];if(!presets.some(entry=>entry.id===HUANCAVELICA_ID))presets.push({id:HUANCAVELICA_ID,name:HUANCAVELICA_NAME});state.terrainPresets=presets;if(isHuancavelica(room)){installHuancavelicaArena(room);state=basePublicRoomState9(room);state.terrainPresets=presets;state.terrainPreset=HUANCAVELICA_ID;state.arena={...(state.arena??{}),terrainPreset:HUANCAVELICA_ID,terrainName:HUANCAVELICA_NAME,phase10Theme:HUANCAVELICA_ID,collisionModel:'multilayer-platforms-v2',platforms:publicPlatforms(),voidFloor:true,legacyCollisionBase:COLLISION_BASE};state.players=(state.players??[]).map(p=>({...p,phase10PlatformId:room.players.find(source=>source.id===p.id)?.phase10PlatformId??null}));state.phase10Map={id:HUANCAVELICA_ID,name:HUANCAVELICA_NAME,visualTheme:'bright-alpine-floating-islands',collisionModel:'multilayer-platforms-v2',platformCount:HUANCAVELICA_PLATFORMS.length,allPrimaryPlatformsReachableByLinks:true,freeMovement:true,normalJumpDistance:NORMAL_JUMP_DISTANCE,adaptiveMaxLinkDistance:MAX_LINK_JUMP,productionReady:true};}return state;}
 export function publicRoomState9(room){if(isHuancavelica(room))installHuancavelicaArena(room);return decoratePublicState(room,basePublicRoomState9(room));}
-export function setTerrain9(id,terrain){const requested=String(terrain??'').toLowerCase();if(requested===HUANCAVELICA_ID){const result=baseSetTerrain9(id,COLLISION_BASE);if(result?.ok){result.room.phase10TerrainAlias=HUANCAVELICA_ID;result.room.phase10MapRevision='10c-alpine-ridge-v5-concept-trace';for(const player of result.room.players??[]){player.ready=false;player.phase10PlatformId=null;}}return result;}const room=findRoomBySocket(id);if(room){room.phase10TerrainAlias=null;for(const player of room.players??[])player.phase10PlatformId=null;}return baseSetTerrain9(id,requested);}
+export function setTerrain9(id,terrain){const requested=String(terrain??'').toLowerCase();if(requested===HUANCAVELICA_ID){const result=baseSetTerrain9(id,COLLISION_BASE);if(result?.ok){result.room.phase10TerrainAlias=HUANCAVELICA_ID;result.room.phase10MapRevision='10d-alpine-ridge-production';for(const player of result.room.players??[]){player.ready=false;player.phase10PlatformId=null;}}return result;}const room=findRoomBySocket(id);if(room){room.phase10TerrainAlias=null;for(const player of room.players??[])player.phase10PlatformId=null;}return baseSetTerrain9(id,requested);}
 export function moveActivePlayer9(id,direction){const room=findRoomBySocket(id);return isHuancavelica(room)?moveOnHuancavelica(id,direction):baseMoveActivePlayer9(id,direction);}
 export function jumpActivePlayer9(id,direction){const room=findRoomBySocket(id);return isHuancavelica(room)?jumpOnHuancavelica(id,direction):baseJumpActivePlayer9(id,direction);}
 export function fireProjectile9(id){const room=findRoomBySocket(id);return isHuancavelica(room)?fireOnHuancavelica(id):baseFireProjectile9(id);}
 export function advanceTurnIfDue9(code,now=Date.now()){return advanceOnHuancavelica(code,now);}
-export function rematchRoom9(id,options={}){const room=findRoomBySocket(id),keepAlias=room?.phase10TerrainAlias===HUANCAVELICA_ID&&!options?.randomMap;const result=baseRematchRoom9(id,options);if(result?.ok){result.room.phase10TerrainAlias=keepAlias?HUANCAVELICA_ID:null;result.room.phase10MapRevision=keepAlias?'10c-alpine-ridge-v5-concept-trace':null;for(const player of result.room.players??[])player.phase10PlatformId=null;if(keepAlias)installHuancavelicaArena(result.room);}return result;}
+export function rematchRoom9(id,options={}){const room=findRoomBySocket(id),keepAlias=room?.phase10TerrainAlias===HUANCAVELICA_ID&&!options?.randomMap;const result=baseRematchRoom9(id,options);if(result?.ok){result.room.phase10TerrainAlias=keepAlias?HUANCAVELICA_ID:null;result.room.phase10MapRevision=keepAlias?'10d-alpine-ridge-production':null;for(const player of result.room.players??[])player.phase10PlatformId=null;if(keepAlias)installHuancavelicaArena(result.room);}return result;}
 
 export {disconnectPlayer9,phase9AirPickupTestHooks,phase9TestHooks,phase9TraversalTestHooks,selectItem9,setAim9};
-export const phase10HuancavelicaTestHooks=Object.freeze({HUANCAVELICA_ID,HUANCAVELICA_NAME,COLLISION_BASE,HUANCAVELICA_PLATFORMS,decoratePublicState,installHuancavelicaArena,platformSurface,topPlatformAtX,nearestPlatformForPoint,firstPlatformImpact,adjustProjectileToPlatforms});
+export const phase10HuancavelicaTestHooks=Object.freeze({HUANCAVELICA_ID,HUANCAVELICA_NAME,COLLISION_BASE,HUANCAVELICA_PLATFORMS,decoratePublicState,installHuancavelicaArena,platformSurface,topPlatformAtX,nearestPlatformForPoint,firstPlatformImpact,adjustProjectileToPlatforms,projectileImpactHints,bindCraterToPlatform,bindNewCraters});
+
