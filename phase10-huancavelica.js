@@ -184,7 +184,23 @@ function advanceOnHuancavelica(code,now=Date.now()){const room=getRoom(code),kno
 
 function decoratePublicState(room,state){const presets=[...(state?.terrainPresets??[])];if(!presets.some(entry=>entry.id===HUANCAVELICA_ID))presets.push({id:HUANCAVELICA_ID,name:HUANCAVELICA_NAME});state.terrainPresets=presets;if(isHuancavelica(room)){installHuancavelicaArena(room);state=basePublicRoomState9(room);state.terrainPresets=presets;state.terrainPreset=HUANCAVELICA_ID;state.arena={...(state.arena??{}),terrainPreset:HUANCAVELICA_ID,terrainName:HUANCAVELICA_NAME,phase10Theme:HUANCAVELICA_ID,collisionModel:'multilayer-platforms-v2',platforms:publicPlatforms(),voidFloor:true,legacyCollisionBase:COLLISION_BASE};state.players=(state.players??[]).map(p=>({...p,phase10PlatformId:room.players.find(source=>source.id===p.id)?.phase10PlatformId??null}));state.phase10Map={id:HUANCAVELICA_ID,name:HUANCAVELICA_NAME,visualTheme:'bright-alpine-floating-islands',collisionModel:'multilayer-platforms-v2',platformCount:HUANCAVELICA_PLATFORMS.length,allPrimaryPlatformsReachableByLinks:true,freeMovement:true,normalJumpDistance:NORMAL_JUMP_DISTANCE,adaptiveMaxLinkDistance:MAX_LINK_JUMP,productionReady:true};}return state;}
 export function publicRoomState9(room){if(isHuancavelica(room))installHuancavelicaArena(room);return decoratePublicState(room,basePublicRoomState9(room));}
-export function setTerrain9(id,terrain){const requested=String(terrain??'').toLowerCase();if(requested===HUANCAVELICA_ID){const result=baseSetTerrain9(id,COLLISION_BASE);if(result?.ok){result.room.phase10TerrainAlias=HUANCAVELICA_ID;result.room.phase10MapRevision='10d-alpine-ridge-production';for(const player of result.room.players??[]){player.ready=false;player.phase10PlatformId=null;}}return result;}const room=findRoomBySocket(id);if(room){room.phase10TerrainAlias=null;for(const player of room.players??[])player.phase10PlatformId=null;}return baseSetTerrain9(id,requested);}
+export function setTerrain9(id, terrain) {
+  if (typeof terrain !== 'string') return { ok: false, error: 'invalid_terrain' };
+  const requested = terrain.toLowerCase();
+  const huancavelica = requested === HUANCAVELICA_ID;
+  // The base setter validates membership, host, lobby state and the terrain.
+  // A rejected request must leave the alias and every player unchanged.
+  const result = baseSetTerrain9(id, huancavelica ? COLLISION_BASE : requested);
+  if (!result.ok) return result;
+  result.room.phase10TerrainAlias = huancavelica ? HUANCAVELICA_ID : null;
+  result.room.phase10MapRevision = huancavelica ? '10d-alpine-ridge-production' : null;
+  for (const player of result.room.players ?? []) {
+    player.phase10PlatformId = null;
+    // Switching aliases may keep the same underlying terrain preset.
+    player.ready = false;
+  }
+  return result;
+}
 export function moveActivePlayer9(id,direction){const room=findRoomBySocket(id);return isHuancavelica(room)?moveOnHuancavelica(id,direction):baseMoveActivePlayer9(id,direction);}
 export function jumpActivePlayer9(id,direction){const room=findRoomBySocket(id);return isHuancavelica(room)?jumpOnHuancavelica(id,direction):baseJumpActivePlayer9(id,direction);}
 export function fireProjectile9(id){const room=findRoomBySocket(id);return isHuancavelica(room)?fireOnHuancavelica(id):baseFireProjectile9(id);}
