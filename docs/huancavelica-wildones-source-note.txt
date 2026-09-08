@@ -1,0 +1,1 @@
+Reference behavior: Wild Ones exposed free left/right movement and jump controls, while preserved map code separates visible foreground art from a pixel collision mask and applies matching crater removal to both.
