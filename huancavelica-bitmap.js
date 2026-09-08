@@ -16,6 +16,7 @@ const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const bitIndex = (px, py) => py * HUANCAVELICA_IMAGE_WIDTH + px;
 const hasBit = (mask, index) => Boolean(mask[index >> 3] & (1 << (index & 7)));
 const clearBit = (mask, index) => { mask[index >> 3] &= ~(1 << (index & 7)); };
+const imageColumn = x => clamp(Math.floor(worldToHuancavelicaImage(x, 0).x), 0, HUANCAVELICA_IMAGE_WIDTH - 1);
 
 export function worldToHuancavelicaImage(x, y) {
   return {
@@ -73,34 +74,47 @@ export function isHuancavelicaSolid(room, x, y) {
   return hasBit(huancavelicaMaskForRoom(room), bitIndex(px, py));
 }
 
-export function huancavelicaSurfaceNear(room, x, targetY, radius = 420) {
-  const imageX = clamp(Math.floor(worldToHuancavelicaImage(x, 0).x), 0, HUANCAVELICA_IMAGE_WIDTH - 1);
-  const centerY = worldToHuancavelicaImage(0, targetY).y;
-  const radiusPixels = Math.max(2, Math.ceil(radius / HUANCAVELICA_WORLD_HEIGHT * HUANCAVELICA_IMAGE_HEIGHT));
-  const mask = huancavelicaMaskForRoom(room);
-  let best = null;
-  for (let delta = 0; delta <= radiusPixels; delta += 1) {
-    for (const py of delta ? [Math.floor(centerY - delta), Math.ceil(centerY + delta)] : [Math.round(centerY)]) {
-      if (py < 0 || py >= HUANCAVELICA_IMAGE_HEIGHT) continue;
-      const solid = hasBit(mask, bitIndex(imageX, py));
-      const aboveSolid = py > 0 && hasBit(mask, bitIndex(imageX, py - 1));
-      if (solid && !aboveSolid) {
-        best = huancavelicaImageToWorld(imageX + .5, py).y;
-        break;
-      }
-    }
-    if (best != null) break;
+// Return every top-facing solid transition in one authored bitmap column.
+// Unlike a heightfield this preserves stacked islands, caves and side towers.
+export function huancavelicaSurfacesAtX(room, x) {
+  const px = imageColumn(x), mask = huancavelicaMaskForRoom(room), out = [];
+  let previousSolid = false;
+  for (let py = 0; py < HUANCAVELICA_IMAGE_HEIGHT; py += 1) {
+    const solid = hasBit(mask, bitIndex(px, py));
+    if (solid && !previousSolid) out.push(huancavelicaImageToWorld(px + .5, py).y);
+    previousSolid = solid;
+  }
+  return out;
+}
+
+export function huancavelicaNearestSurface(room, x, targetY, { maxRise = Infinity, maxDrop = Infinity } = {}) {
+  const y = Number(targetY);
+  if (!Number.isFinite(y)) return null;
+  let best = null, bestDistance = Infinity;
+  for (const surface of huancavelicaSurfacesAtX(room, x)) {
+    const delta = surface - y;
+    if (delta < -Math.max(0, Number(maxRise)) || delta > Math.max(0, Number(maxDrop))) continue;
+    const distance = Math.abs(delta);
+    if (distance < bestDistance) { best = surface; bestDistance = distance; }
   }
   return best;
 }
 
-export function huancavelicaTopSurface(room, x) {
-  const imageX = clamp(Math.floor(worldToHuancavelicaImage(x, 0).x), 0, HUANCAVELICA_IMAGE_WIDTH - 1);
-  const mask = huancavelicaMaskForRoom(room);
-  for (let py = 0; py < HUANCAVELICA_IMAGE_HEIGHT; py += 1) {
-    if (hasBit(mask, bitIndex(imageX, py))) return huancavelicaImageToWorld(imageX + .5, py).y;
+export function huancavelicaSurfaceBelow(room, x, startY, maxDrop = HUANCAVELICA_WORLD_HEIGHT) {
+  const y = Number(startY), limit = Math.max(0, Number(maxDrop));
+  if (!Number.isFinite(y)) return null;
+  for (const surface of huancavelicaSurfacesAtX(room, x)) {
+    if (surface >= y - 0.5 && surface - y <= limit) return surface;
   }
-  return HUANCAVELICA_WORLD_HEIGHT;
+  return null;
+}
+
+export function huancavelicaSurfaceNear(room, x, targetY, radius = 420) {
+  return huancavelicaNearestSurface(room, x, targetY, { maxRise: radius, maxDrop: radius });
+}
+
+export function huancavelicaTopSurface(room, x) {
+  return huancavelicaSurfacesAtX(room, x)[0] ?? HUANCAVELICA_WORLD_HEIGHT;
 }
 
 export function firstHuancavelicaMaskImpact(room, projectile, maxSeconds = 8) {
