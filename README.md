@@ -23,7 +23,7 @@ Current architecture:
 
 ### Huancavelica Simulator authority
 
-`phase10-huancavelica.js` owns the production Alpine Ridge platform graph, traversal links, spawns and projectile/platform intersection. Destruction remains authoritative: every crater is normalized with an impact height and `phase10PlatformId`, so a blast deforms only the island it actually hit even when several platforms overlap at the same world X coordinate. Public clients receive the unchanged base platform silhouettes plus crater data and reconstruct the same visible destructible surface.
+`phase10-huancavelica.js` keeps the established traversal graph while `huancavelica-bitmap.js` owns authoritative terrain collision from a compact 1448×1086 bit mask generated directly from the approved terrain PNG alpha channel. Grounding, surface lookup and projectile impacts query that mask. Craters remain server-authoritative world-space events; each room caches a clean mask plus deterministic crater replay, and public clients receive the same crater list to remove identical pixels from the visible terrain layer. Other maps retain their existing collision paths.
 
 ## Local start
 
@@ -49,4 +49,3 @@ GET /health
 ## Deployment note
 
 GitHub CI validates repository code/tests but does not itself prove that Google Cloud Run currently serves the exact latest backend commit. Runtime deployment parity is checked separately when needed.
-
