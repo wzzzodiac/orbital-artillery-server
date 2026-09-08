@@ -1,6 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { phase10HuancavelicaTestHooks } from '../phase10-huancavelica.js';
+import {
+  HUANCAVELICA_IMAGE_HEIGHT,
+  HUANCAVELICA_IMAGE_WIDTH,
+  clearHuancavelicaCrater,
+  huancavelicaBitmapTestHooks,
+  huancavelicaImageToWorld,
+  huancavelicaMaskForRoom,
+  isHuancavelicaSolid,
+  worldToHuancavelicaImage
+} from '../huancavelica-bitmap.js';
 
 const { HUANCAVELICA_PLATFORMS, bindCraterToPlatform, decoratePublicState, firstPlatformImpact, installHuancavelicaArena, platformSurface } = phase10HuancavelicaTestHooks;
 const byId=new Map(HUANCAVELICA_PLATFORMS.map(p=>[p.id,p]));
@@ -82,7 +92,8 @@ test('Huancavelica arena installs server-authoritative floating platforms and va
   installHuancavelicaArena(room);
   assert.equal(room.arena.phase10Theme,'huancavelica');
   assert.equal(room.arena.terrainName,'Huancavelica Simulator');
-  assert.equal(room.arena.collisionModel,'multilayer-platforms-v2');
+  assert.equal(room.arena.collisionModel,'bitmap-alpha-mask-v1');
+  assert.deepEqual(room.arena.bitmapTerrain,{width:1448,height:1086,worldWidth:5000,worldHeight:5000,alphaThreshold:16,maskSource:'terrain-alpha'});
   assert.equal(room.arena.voidFloor,true);
   assert.equal(room.arena.platforms.length,HUANCAVELICA_PLATFORMS.length);
   for(const player of room.players){
@@ -98,11 +109,12 @@ test('Huancavelica is available in the public map pool as a production map',()=>
   assert.deepEqual(state.terrainPresets,[{id:'huancavelica',name:'Huancavelica Simulator'}]);
 });
 
-test('destruction deforms only the vertically stacked platform that was hit',()=>{
-  const room={arena:{worldHeight:5000,craters:[{id:'top-hit',x:2500,y:675,radius:180,depth:165,phase10PlatformId:'top-center'}]}};
-  const top=byId.get('top-center'),middle=byId.get('center-upper');
-  assert.equal(platformSurface(room,top,2500),840);
-  assert.equal(platformSurface(room,middle,2500),2000,'a crater in the crown must not cut the island below it');
+test('bitmap crater removes the visible crown without touching a lower island',()=>{
+  const clean={arena:{worldHeight:5000,craters:[]}},top=byId.get('top-center'),middle=byId.get('center-upper');
+  const cleanTop=platformSurface(clean,top,2500),cleanMiddle=platformSurface(clean,middle,2500);
+  const room={arena:{worldHeight:5000,craters:[{id:'top-hit',x:2500,y:cleanTop,radius:180,depth:165,phase10PlatformId:'top-center'}]}};
+  assert.ok(platformSurface(room,top,2500)>cleanTop+150);
+  assert.equal(platformSurface(room,middle,2500),cleanMiddle,'a crown crater must not cut the authored island below it');
 });
 
 test('legacy crater records are bound to one authoritative platform before publication',()=>{
@@ -119,6 +131,43 @@ test('projectile sampling collides with the visible upper crown before lower sta
   const impact=firstPlatformImpact(room,projectile);
   assert.ok(impact);
   assert.equal(impact.platformId,'top-center');
-  assert.ok(Math.abs(impact.y-675)<1);
+  assert.ok(impact.y>200&&impact.y<280);
+  assert.equal(isHuancavelicaSolid(room,impact.x,impact.y+8),true);
 });
 
+test('bitmap asset transform is deterministic and invertible',()=>{
+  assert.deepEqual([HUANCAVELICA_IMAGE_WIDTH,HUANCAVELICA_IMAGE_HEIGHT],[1448,1086]);
+  const image=worldToHuancavelicaImage(1875,3125),world=huancavelicaImageToWorld(image.x,image.y);
+  assert.ok(Math.abs(world.x-1875)<1e-9);
+  assert.ok(Math.abs(world.y-3125)<1e-9);
+});
+
+test('terrain alpha mask has authored solid pixels and transparent void',()=>{
+  const room={arena:{craters:[]}};
+  assert.equal(isHuancavelicaSolid(room,2500,100),false);
+  assert.equal(isHuancavelicaSolid(room,2500,250),true);
+  assert.equal(isHuancavelicaSolid(room,2500,1200),false);
+});
+
+test('crater clearing mutates collision pixels using the same world circle',()=>{
+  const room={arena:{craters:[]}},mask=huancavelicaMaskForRoom(room).slice();
+  const center={x:2500,y:300,radius:150};
+  assert.equal(isHuancavelicaSolid(room,center.x,center.y),true);
+  clearHuancavelicaCrater(mask,center);
+  const image=worldToHuancavelicaImage(center.x,center.y),index=Math.floor(image.y)*HUANCAVELICA_IMAGE_WIDTH+Math.floor(image.x);
+  assert.equal(huancavelicaBitmapTestHooks.hasBit(mask,index),false);
+});
+
+test('authoritative crater events replay identically for repeat queries and late joins',()=>{
+  const craters=[{id:'one',x:2500,y:300,radius:150},{id:'two',x:1750,y:1850,radius:110}];
+  const room={arena:{craters}},first=huancavelicaMaskForRoom(room),second=huancavelicaMaskForRoom(room);
+  assert.equal(first,second,'unchanged rooms should reuse the cached compact mask');
+  const reconnect={arena:{craters:craters.map(crater=>({...crater}))}},replayed=huancavelicaMaskForRoom(reconnect);
+  assert.notEqual(first,replayed);
+  assert.deepEqual(first,replayed,'late join replay must reproduce the authoritative terrain state');
+});
+
+test('non-Huancavelica public state keeps its existing collision model',()=>{
+  const state=decoratePublicState({}, {terrainPresets:[],arena:{collisionModel:'heightfield'}});
+  assert.equal(state.arena.collisionModel,'heightfield');
+});
