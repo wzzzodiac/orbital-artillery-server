@@ -23,7 +23,7 @@ Current architecture:
 
 ### Huancavelica Simulator authority
 
-`huancavelica-bitmap.js` owns authoritative terrain collision from a compact 1448×1086 bit mask generated directly from the approved terrain PNG alpha channel. `phase10-huancavelica.js` now uses that authored mask for A/D walking, ledge falls, jump landing/clearance, grounding helpers and projectile terrain impact. The legacy 31-platform graph remains only as spawn/navigation metadata and no longer decides normal traversal. Craters remain server-authoritative world-space events; each room caches a clean mask plus deterministic crater replay, and public clients receive the same crater list to remove identical pixels from the visible terrain layer. Other maps retain their existing collision paths.
+Huancavelica v2 uses `phase11-huancavelica-v2.js` and a compact cleaned 1448×1086 bit mask as the sole physical terrain authority. Grounding, movement, jumps, spawns, pickups, projectile impacts, support loss, and crater replay all query that mutable mask; the old platform graph does not control v2. Huancavelica v1 remains available through its Phase 10 path and other maps retain their existing collision systems. See [HUANCAVELICA_V2.md](HUANCAVELICA_V2.md) for the complete revision and deployment contract.
 
 ## Local start
 
