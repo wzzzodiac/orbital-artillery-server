@@ -36,6 +36,7 @@ import {
 } from './huancavelica-v2-bitmap.js';
 
 const COLLISION_BASE='islands';
+const LEGACY_HUANCAVELICA_ID='huancavelica';
 const GROUND_OFFSET=8;
 const WALK_STEP=15;
 const MAX_WALK_SURFACE_DELTA=42;
@@ -170,13 +171,13 @@ function advanceOnV2(code,now=Date.now()){
 }
 
 function decoratePublic(room,state){
-  const presets=[...(state?.terrainPresets??[])];if(!presets.some(entry=>entry.id===HUANCAVELICA_V2_ID))presets.push({id:HUANCAVELICA_V2_ID,name:HUANCAVELICA_V2_NAME,terrainRevision:HUANCAVELICA_V2_REVISION});state.terrainPresets=presets;
+  const presets=(state?.terrainPresets??[]).filter(entry=>entry.id!==LEGACY_HUANCAVELICA_ID);if(!presets.some(entry=>entry.id===HUANCAVELICA_V2_ID))presets.push({id:HUANCAVELICA_V2_ID,name:HUANCAVELICA_V2_NAME,terrainRevision:HUANCAVELICA_V2_REVISION});state.terrainPresets=presets;
   if(isV2(room)){installV2Arena(room);state=basePublic(room);state.terrainPresets=presets;state.terrainPreset=HUANCAVELICA_V2_ID;state.arena={...(state.arena??{}),terrainPreset:HUANCAVELICA_V2_ID,terrainName:HUANCAVELICA_V2_NAME,phase11Theme:HUANCAVELICA_V2_ID,terrainRevision:HUANCAVELICA_V2_REVISION,collisionModel:HUANCAVELICA_V2_COLLISION_MODEL,platforms:[],worldWidth:HUANCAVELICA_V2_WORLD_WIDTH,worldHeight:HUANCAVELICA_V2_WORLD_HEIGHT,bitmapTerrain:{width:HUANCAVELICA_V2_IMAGE_WIDTH,height:HUANCAVELICA_V2_IMAGE_HEIGHT,worldWidth:HUANCAVELICA_V2_WORLD_WIDTH,worldHeight:HUANCAVELICA_V2_WORLD_HEIGHT,uniformScale:HUANCAVELICA_V2_SCALE,maskSource:'cleaned-terrain-alpha-guided-by-supplied-mask'}};state.phase11Map={id:HUANCAVELICA_V2_ID,name:HUANCAVELICA_V2_NAME,terrainRevision:HUANCAVELICA_V2_REVISION,collisionModel:HUANCAVELICA_V2_COLLISION_MODEL,oneIslandOnePlayableSurface:true,oldPlatformGraphAuthority:false,normalMovementStep:WALK_STEP,normalWalkableSurfaceDelta:MAX_WALK_SURFACE_DELTA,normalJumpDistance:NORMAL_JUMP_DISTANCE,adaptiveMaxDistance:EXTENDED_MAX_DISTANCE,productionReady:true};}
   return state;
 }
 
 export function publicRoomState11(room){if(isV2(room))installV2Arena(room);return decoratePublic(room,basePublic(room));}
-export function setTerrain11(id,terrain){const requested=typeof terrain==='string'?terrain.toLowerCase():null;if(!requested)return{ok:false,error:'invalid_terrain'};const v2=requested===HUANCAVELICA_V2_ID,result=baseSetTerrain(id,v2?COLLISION_BASE:requested);if(!result.ok)return result;result.room.phase11TerrainAlias=v2?HUANCAVELICA_V2_ID:null;result.room.phase11TerrainRevision=v2?HUANCAVELICA_V2_REVISION:null;result.room.phase11SpawnKey=null;for(const player of result.room.players??[])player.ready=false;if(v2)installV2Arena(result.room);return result;}
+export function setTerrain11(id,terrain){const requested=typeof terrain==='string'?terrain.toLowerCase():null;if(!requested||requested===LEGACY_HUANCAVELICA_ID)return{ok:false,error:'invalid_terrain'};const v2=requested===HUANCAVELICA_V2_ID,result=baseSetTerrain(id,v2?COLLISION_BASE:requested);if(!result.ok)return result;result.room.phase11TerrainAlias=v2?HUANCAVELICA_V2_ID:null;result.room.phase11TerrainRevision=v2?HUANCAVELICA_V2_REVISION:null;result.room.phase11SpawnKey=null;for(const player of result.room.players??[])player.ready=false;if(v2)installV2Arena(result.room);return result;}
 export function moveActivePlayer11(id,direction){const room=findRoomBySocket(id);return isV2(room)?moveOnV2(id,direction):baseMove(id,direction);}
 export function jumpActivePlayer11(id,direction){const room=findRoomBySocket(id);return isV2(room)?jumpOnV2(id,direction):baseJump(id,direction);}
 export function fireProjectile11(id){const room=findRoomBySocket(id);return isV2(room)?fireOnV2(id):baseFire(id);}

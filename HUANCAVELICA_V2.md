@@ -23,7 +23,7 @@ Each room starts from the clean bit mask and replays its ordered world-space cra
 
 ## Compatibility and fallback
 
-Public room state includes the v2 revision, collision model, image/world dimensions, and `platforms: []`. The frontend refuses an incompatible v2 backend rather than guessing. Huancavelica v1 continues through `phase10-huancavelica.js`, while other terrain presets retain their existing collision paths.
+Public room state includes the v2 revision, collision model, image/world dimensions, and `platforms: []`. The frontend refuses an incompatible v2 backend rather than guessing. Phase 11 removes legacy `huancavelica` from public `terrainPresets` and rejects new direct selection, while retaining `phase10-huancavelica.js` for existing-room recovery and regression testing. Random selection and random rematches use only the existing base terrain IDs, so neither can revive v1. Other terrain presets retain their existing collision paths.
 
 ## Verification and deployment
 

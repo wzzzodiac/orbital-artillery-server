@@ -23,7 +23,7 @@ Current architecture:
 
 ### Huancavelica Simulator authority
 
-Huancavelica v2 uses `phase11-huancavelica-v2.js` and a compact cleaned 1448×1086 bit mask as the sole physical terrain authority. Grounding, movement, jumps, spawns, pickups, projectile impacts, support loss, and crater replay all query that mutable mask; the old platform graph does not control v2. Huancavelica v1 remains available through its Phase 10 path and other maps retain their existing collision systems. See [HUANCAVELICA_V2.md](HUANCAVELICA_V2.md) for the complete revision and deployment contract.
+Huancavelica v2 uses `phase11-huancavelica-v2.js` and a compact cleaned 1448×1086 bit mask as the sole physical terrain authority. Grounding, movement, jumps, spawns, pickups, projectile impacts, support loss, and crater replay all query that mutable mask; the old platform graph does not control v2. Only v2 appears in the public Huancavelica map pool; v1 remains in Phase 10 solely for legacy-room recovery and regressions. Other maps retain their existing collision systems. See [HUANCAVELICA_V2.md](HUANCAVELICA_V2.md) for the complete revision and deployment contract.
 
 ## Local start
 

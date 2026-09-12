@@ -8,8 +8,10 @@ import {
   moveActivePlayer11,
   phase11HuancavelicaV2TestHooks,
   publicRoomState11,
+  rematchRoom11,
   setTerrain11
 } from '../phase11-huancavelica-v2.js';
+import { setTerrain9 as setLegacyHuancavelica } from '../phase10-huancavelica.js';
 import {
   HUANCAVELICA_V2_COLLISION_MODEL,
   HUANCAVELICA_V2_IMAGE_HEIGHT,
@@ -33,6 +35,48 @@ import {
 const { installV2Arena, landingAt, settleUnsupported }=phase11HuancavelicaV2TestHooks;
 const imagePoint=(x,y)=>huancavelicaV2ImageToWorld(x,y);
 const bareRoom=(craters=[])=>({arena:{craters}});
+
+test('public terrain pool exposes v2 but never legacy Huancavelica',()=>{
+  roomStore.clear();const room=createRoom('map-host','Host').room;
+  const publicState=publicRoomState11(room),ids=publicState.terrainPresets.map(entry=>entry.id);
+  assert.ok(ids.includes('huancavelica-v2'));
+  assert.ok(!ids.includes('huancavelica'));
+  assert.deepEqual(setTerrain11('map-host','huancavelica'),{ok:false,error:'invalid_terrain'});
+  assert.equal(setTerrain11('map-host','huancavelica-v2').ok,true);
+  assert.equal(publicRoomState11(room).terrainPreset,'huancavelica-v2');
+  assert.ok(!publicRoomState11(room).terrainPresets.some(entry=>entry.id==='huancavelica'));
+});
+
+test('random selection and random rematch cannot revive v1 while legacy recovery remains available',()=>{
+  roomStore.clear();const room=createRoom('map-host','Host').room;joinRoom(room.code,'map-guest','Guest');
+  for(let i=0;i<30;i+=1){
+    assert.equal(setTerrain11('map-host','random').ok,true);
+    assert.notEqual(publicRoomState11(room).terrainPreset,'huancavelica');
+  }
+  assert.equal(setLegacyHuancavelica('map-host','huancavelica').ok,true,'Phase 10 legacy implementation remains callable for recovery');
+  const legacy=publicRoomState11(room);
+  assert.equal(legacy.terrainPreset,'huancavelica');
+  assert.ok(!legacy.terrainPresets.some(entry=>entry.id==='huancavelica'),'Existing v1 rooms do not advertise a new v1 selection');
+  for(const id of ['map-host','map-guest'])setPlayerReady(id,true);
+  assert.equal(startRoom('map-host').ok,true);
+  room.status='finished';room.match.result={type:'survival',winnerPlayerId:'map-host',winnerName:'Host',draw:false};room.match.finishedAt=Date.now();
+  const randomRematch=rematchRoom11('map-host',{randomMap:true});
+  assert.equal(randomRematch.ok,true);
+  assert.notEqual(publicRoomState11(room).terrainPreset,'huancavelica');
+  assert.ok(!publicRoomState11(room).terrainPresets.some(entry=>entry.id==='huancavelica'));
+});
+
+test('an existing legacy v1 room can rematch on its original map without reopening public selection',()=>{
+  roomStore.clear();const room=createRoom('legacy-host','Host').room;joinRoom(room.code,'legacy-guest','Guest');
+  assert.equal(setLegacyHuancavelica('legacy-host','huancavelica').ok,true);
+  for(const id of ['legacy-host','legacy-guest'])setPlayerReady(id,true);
+  assert.equal(startRoom('legacy-host').ok,true);
+  room.status='finished';room.match.result={type:'survival',winnerPlayerId:'legacy-host',winnerName:'Host',draw:false};room.match.finishedAt=Date.now();
+  assert.equal(rematchRoom11('legacy-host',{randomMap:false}).ok,true);
+  const state=publicRoomState11(room);
+  assert.equal(state.terrainPreset,'huancavelica');
+  assert.ok(!state.terrainPresets.some(entry=>entry.id==='huancavelica'));
+});
 
 function startedV2(ids=['a','b']){
   roomStore.clear();const [host,...rest]=ids,room=createRoom(host,host.toUpperCase()).room;
