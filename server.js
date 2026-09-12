@@ -24,7 +24,7 @@ import {
   selectItem9,
   setAim9,
   setTerrain9
-} from './phase10-huancavelica.js';
+} from './phase11-huancavelica-v2.js';
 import {
   ensureAfkVoteState,
   registerActiveTurnActivity,
@@ -51,7 +51,7 @@ setInterval(() => { const cutoff = Date.now() - 120_000; for (const [ip, window]
 
 let io;
 const httpServer = createServer((req, res) => {
-  if (req.url === '/health') { res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' }); res.end(JSON.stringify({ ok: true, service: 'orbital-artillery-server', phase: '10-huancavelica-development', version: 'phase10-development', rooms: roomStore.size, sockets: io?.engine?.clientsCount ?? 0 })); return; }
+  if (req.url === '/health') { res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' }); res.end(JSON.stringify({ ok: true, service: 'orbital-artillery-server', phase: '11-huancavelica-v2', version: 'phase11-huancavelica-v2', terrainRevisions: { 'huancavelica-v2': 'huancavelica-v2-bitmap-1' }, rooms: roomStore.size, sockets: io?.engine?.clientsCount ?? 0 })); return; }
   res.writeHead(404, { 'content-type': 'application/json; charset=utf-8' }); res.end(JSON.stringify({ error: 'not_found' }));
 });
 
