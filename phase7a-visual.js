@@ -105,6 +105,7 @@ function applySafeNuke(room,q,now){
   const halfLength=Math.max(1,Math.abs(bx-ax)/2);
   for(let x=(q.targetX??((ax+bx)/2))-halfLength,index=0;x<=(q.targetX??((ax+bx)/2))+halfLength;x+=NUKE_SCAR_STEP,index+=1){const cx=clamp(x,30,4970),cy=phase7aHotfixTestHooks.surface(room,cx);if(cy>=WORLD_HEIGHT-1)continue;if(distanceToSegment(cx,cy,ax,ay,bx,by)>halfWidth+NUKE_SCAR_MARGIN)continue;room.arena.craters.push({id:`${q.id}-nuke-scar-${index}`,x:cx,radius:NUKE_SCAR_RADIUS,depth:NUKE_SCAR_DEPTH,createdAt:now});}
   room.pickups=(room.pickups??[]).filter(box=>distanceToSegment(box.x,box.y,ax,ay,bx,by)>halfWidth+45);
+  if (room.arena?.phase11Theme === 'huancavelica-v2') return true;
   for(const player of room.players){if(player.alive===false||!player.spawn)continue;const nextY=phase7aHotfixTestHooks.surface(room,player.spawn.x);if(nextY>=WORLD_HEIGHT-1)continue;const targetY=nextY-GROUND_OFFSET;if(targetY<=player.spawn.y+2)continue;const fromY=player.spawn.y;player.spawn={...player.spawn,y:Math.round(targetY)};player.motion={type:'fall',startedAt:now,endsAt:now+Math.min(1100,Math.max(350,(targetY-fromY)*2.2)),fromX:player.spawn.x,fromY,toX:player.spawn.x,toY:Math.round(targetY),apex:0};}
   return true;
 }

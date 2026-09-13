@@ -110,6 +110,7 @@ function collectAirStrikePickup(room, shooter, x, y) {
 }
 
 function settleAfterAirStrike(room, now) {
+  if (room.arena?.phase11Theme === 'huancavelica-v2') return;
   for (const player of room.players) {
     if (player.alive === false || !player.spawn) continue;
     const nextY = surface(room, player.spawn.x);

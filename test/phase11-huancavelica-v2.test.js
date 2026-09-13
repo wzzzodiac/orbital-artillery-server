@@ -200,6 +200,21 @@ test('active v2 player can fire BASIC without changing aim, power, wind or gravi
   const room=startedV2(),id=room.match.activePlayerId,angle=room.match.aimAngle,power=room.match.aimPower,wind={...room.match.wind},result=fireProjectile11(id);assert.equal(result.ok,true);const shot=room.match.projectile;assert.ok(shot);assert.equal(shot.angle,angle);assert.equal(shot.power,power);assert.deepEqual(room.match.wind,wind);assert.ok(shot.gravity>0);assert.equal(isHuancavelicaV2Solid(room,shot.startX,shot.startY),false);assert.ok(['terrain','player','out_of_bounds','timeout'].includes(shot.impactReason));
 });
 
+test('v2 BASIC resolution does not finish on a legacy void prediction while tanks retain HP',()=>{
+  for(const shooter of ['a','b']){
+    const room=startedV2();room.match.activePlayerId=shooter;
+    assert.equal(fireProjectile11(shooter).ok,true);
+    const q=room.match.projectile;
+    advanceTurnIfDue11(room.code,q.impactAt+1);
+    advanceTurnIfDue11(room.code,q.resolveAt+1);
+    assert.equal(room.players.filter(player=>player.hp>0).length,2,shooter);
+    assert.ok(room.players.every(player=>player.alive!==false&&Number(player.motion?.toY??0)<HUANCAVELICA_V2_WORLD_HEIGHT),shooter);
+    assert.equal(room.status,'started',shooter);
+    assert.equal(room.match.result,null,shooter);
+    assert.equal(Object.keys(room.matchTelemetry?.deathAttribution??{}).length,0,shooter);
+  }
+});
+
 test('segmented projectile sweep finds thin terrain that endpoint-only sampling could tunnel through',()=>{
   const room=bareRoom(),y=imagePoint(0,390).y,hit=firstHuancavelicaV2SolidOnSegment(room,{x:0,y},{x:1800,y});assert.ok(hit);assert.equal(isHuancavelicaV2Solid(room,hit.x,hit.y),true);
   const projectile={startX:0,startY:y,vx:5000,vy:0,windAccel:0,gravity:0},impact=firstHuancavelicaV2ProjectileImpact(room,projectile,.5);assert.ok(impact);

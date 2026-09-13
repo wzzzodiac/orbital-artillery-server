@@ -115,6 +115,7 @@ function applyNuke(room,q,now){
   room.pickups=(room.pickups??[]).filter(box=>distanceToSegment(box.x,box.y,ax,ay,bx,by)>NUKE_BEAM_HALF_WIDTH+45);
 
   q.pendingVoidDeathIds=[];
+  if (room.arena?.phase11Theme === 'huancavelica-v2') return true;
   for(const player of room.players){
     if(player.alive===false||!player.spawn)continue;
     const nextY=surface(room,player.spawn.x);
