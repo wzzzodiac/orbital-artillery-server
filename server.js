@@ -14,6 +14,7 @@ import {
   startRoom
 } from './rooms.js';
 import {
+  advanceAirborne11,
   advanceTurnIfDue9,
   disconnectPlayer9,
   fireProjectile9,
@@ -22,6 +23,7 @@ import {
   publicRoomState9,
   rematchRoom9,
   selectItem9,
+  setAirInput11,
   setAim9,
   setTerrain9
 } from './phase11-huancavelica-v2.js';
@@ -75,6 +77,19 @@ setInterval(() => {
   }
 }, 250).unref();
 
+// V2 airborne positions are authoritative at 20 Hz. The existing turn and
+// projectile loop above remains at its original cadence for every map.
+setInterval(() => {
+  const now = Date.now();
+  for (const room of roomStore.values()) {
+    const changed = advanceAirborne11(room.code, now);
+    if (changed && (now - (room.phase11LastAirBroadcastAt ?? 0) >= 100 || !room.players.some(player => player.airborne))) {
+      room.phase11LastAirBroadcastAt = now;
+      emitRoomState(changed);
+    }
+  }
+}, 50).unref();
+
 io.on('connection', socket => {
   cancelPendingTransportRemoval(socket.id);
   const recoveredRoom = findRoomBySocket(socket.id);
@@ -107,6 +122,7 @@ io.on('connection', socket => {
   onClientEvent(socket, 'rematch_game', (payload, reply = () => {}) => { if (!allowRoomAction()) return reply({ ok: false, error: 'room_action_rate_limited' }); replyMutation(rematchRoom9(socket.id, { randomMap: Boolean(payload?.randomMap) }), reply); });
   onClientEvent(socket, 'move_player', (payload, reply = () => {}) => replyTurnAction(moveActivePlayer9(socket.id, payload?.direction), reply));
   onClientEvent(socket, 'jump_player', (payload, reply = () => {}) => replyTurnAction(jumpActivePlayer9(socket.id, payload?.direction), reply));
+  onClientEvent(socket, 'air_move', (payload, reply = () => {}) => replyTurnAction(setAirInput11(socket.id, payload.direction), reply));
   onClientEvent(socket, 'set_aim', (payload, reply = () => {}) => replyTurnAction(setAim9(socket.id, payload?.angle, payload?.power), reply));
   onClientEvent(socket, 'select_item', (payload, reply = () => {}) => replyTurnAction(selectItem9(socket.id, payload?.slot), reply));
   onClientEvent(socket, 'fire_projectile', (_payload, reply = () => {}) => replyTurnAction(fireProjectile9(socket.id), reply));

@@ -15,6 +15,7 @@ const schemas = {
   rematch_game: { optional: { randomMap: boolean } },
   move_player: { required: { direction } },
   jump_player: { optional: { direction } },
+  air_move: { required: { direction } },
   set_aim: { optional: { angle: number, power: number } },
   select_item: { required: { slot: value => Number.isInteger(value) && value >= 1 && value <= 3 } },
   fire_projectile: {},

@@ -1,5 +1,6 @@
 import { randomInt } from 'node:crypto';
 import { CONFIG } from './config.js';
+import { startV2Airborne } from './huancavelica-v2-airborne.js';
 
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const VALID_TEAMS = new Set(['A', 'B']);
@@ -371,6 +372,13 @@ function applyKnockback(room, player, projectile, distance, now) {
   const speed = (150 + (KNOCKBACK_MAX_SPEED - 150) * strength);
   const vx = nx * speed;
   const vy = ny * speed - KNOCKBACK_LIFT_BIAS * strength;
+  if (room.arena?.phase11Theme === 'huancavelica-v2') {
+    startV2Airborne(player, now, { reason: 'knockback' });
+    player.airborne.vx = vx;
+    player.airborne.vy = vy;
+    player.spawn.facing = vx < -1 ? -1 : vx > 1 ? 1 : player.spawn.facing;
+    return { endsAt: now + 260, voided: false, strength };
+  }
   const from = { ...player.spawn };
   let finalX = from.x, finalY = from.y, duration = 0.25, voided = false;
 
@@ -441,13 +449,25 @@ function applyImpactResolution(room, projectile, now) {
   }
 
   const groundY = terrainSurface(room, projectile.impactX);
-  if (groundY < WORLD_HEIGHT - 1) room.arena.craters.push({ id: projectile.id, x: projectile.impactX, radius: CRATER_RADIUS, depth: CRATER_DEPTH, createdAt: projectile.impactAt });
+  if (groundY < WORLD_HEIGHT - 1 || room.arena?.phase11Theme === 'huancavelica-v2') room.arena.craters.push({ id: projectile.id, x: projectile.impactX, radius: CRATER_RADIUS, depth: CRATER_DEPTH, createdAt: projectile.impactAt });
 
   let latestMotionEnd = 0;
   for (const { player, distance } of affected) {
     if (player.alive === false || !player.spawn) continue;
     const knockback = applyKnockback(room, player, projectile, distance, now);
     if (knockback) latestMotionEnd = Math.max(latestMotionEnd, knockback.endsAt);
+  }
+
+  // V2 resolves destroyed support against its authored bitmap after this
+  // impact. The heightfield below has no knowledge of stacked islands and
+  // would otherwise teleport or kill healthy vehicles immediately.
+  if (room.arena?.phase11Theme === 'huancavelica-v2') {
+    room.match.pendingResult = resultFor(room);
+    if (latestMotionEnd) {
+      projectile.resolveAt = Math.max(projectile.resolveAt, latestMotionEnd + VOID_FINISH_BUFFER_MS);
+      room.match.turnEndsAt = projectile.resolveAt;
+    }
+    return true;
   }
 
   for (const player of room.players) {

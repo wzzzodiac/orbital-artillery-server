@@ -3,12 +3,15 @@ import assert from 'node:assert/strict';
 import { activateRoom, createRoom, getRoom, joinRoom, roomStore, setPlayerReady, startRoom } from '../rooms.js';
 import {
   advanceTurnIfDue11,
+  advanceAirborne11,
   fireProjectile11,
   jumpActivePlayer11,
   moveActivePlayer11,
   phase11HuancavelicaV2TestHooks,
   publicRoomState11,
   rematchRoom11,
+  setAirInput11,
+  setAim11,
   setTerrain11
 } from '../phase11-huancavelica-v2.js';
 import { setTerrain9 as setLegacyHuancavelica } from '../phase10-huancavelica.js';
@@ -31,8 +34,9 @@ import {
   isHuancavelicaV2Solid,
   worldToHuancavelicaV2Image
 } from '../huancavelica-v2-bitmap.js';
+import { V2_AIR_PHYSICS, advanceV2AirbornePlayer, startV2Airborne, v2GroundSurface } from '../huancavelica-v2-airborne.js';
 
-const { installV2Arena, landingAt, settleUnsupported }=phase11HuancavelicaV2TestHooks;
+const { installV2Arena, settleUnsupported }=phase11HuancavelicaV2TestHooks;
 const imagePoint=(x,y)=>huancavelicaV2ImageToWorld(x,y);
 const bareRoom=(craters=[])=>({arena:{craters}});
 
@@ -133,18 +137,82 @@ test('spectator cannot move or jump during another player turn',()=>{
   const room=startedV2(),spectator=room.players.find(player=>player.id!==room.match.activePlayerId);assert.equal(moveActivePlayer11(spectator.id,1).error,'not_your_turn');assert.equal(jumpActivePlayer11(spectator.id,1).error,'not_your_turn');
 });
 
-test('normal bitmap jumps climb the authored stepping chain to the top island',()=>{
-  const room=bareRoom(),startX=imagePoint(650,0).x,startSurface=findHuancavelicaV2SurfaceBelow(room,startX,imagePoint(0,430).y,160),route=[[1,180],[-1,180],[-1,180],[-1,240],[1,225]];let from={x:startX,y:startSurface-8};
-  for(const[direction,distance]of route){const landing=landingAt(room,from,direction,distance);assert.ok(landing,`missing landing from ${JSON.stringify(from)} dir=${direction} distance=${distance}`);from={x:landing.x,y:landing.y};}
-  assert.ok(worldToHuancavelicaV2Image(0,from.y+8).y<100,'route must reach the authored upper crown');
+test('SPACE creates upward velocity with no destination and airborne input changes direction',()=>{
+  const room=startedV2(),id=room.match.activePlayerId,player=room.players.find(entry=>entry.id===id),start={...player.spawn};
+  assert.equal(setAirInput11(id,1).ok,true);
+  assert.equal(jumpActivePlayer11(id).ok,true);
+  assert.equal(player.airborne.vy,-V2_AIR_PHYSICS.jumpImpulse);
+  assert.equal(player.airborne.input,1);
+  assert.equal(player.motion,null);
+  assert.deepEqual(player.spawn,start,'takeoff must not preselect or teleport to a landing');
+  assert.equal(jumpActivePlayer11(id).error,'already_airborne');
+  assert.equal(fireProjectile11(id).error,'player_airborne');
+  const now=player.airborne.updatedAt;
+  assert.equal(advanceAirborne11(room.code,now+50),room);
+  assert.ok(player.spawn.y<start.y);
+  assert.ok(player.spawn.x>start.x);
+  assert.equal(setAirInput11(id,-1).ok,true);
+  assert.equal(player.airborne.input,-1);
+  assert.equal(publicRoomState11(room).players.find(entry=>entry.id===id).airborne.vy<0,true);
 });
 
-test('jump path rejects an island side/underside instead of phasing through it',()=>{
-  const room=bareRoom(),from={...imagePoint(500,360)};from.y-=8;const blocked=landingAt(room,from,1,420);assert.equal(blocked,null);
+test('jump and air control preserve active-turn, living-player and projectile locks',()=>{
+  const room=startedV2(),id=room.match.activePlayerId,player=room.players.find(entry=>entry.id===id);
+  room.match.projectile={id:'busy'};
+  assert.equal(jumpActivePlayer11(id).error,'shot_in_flight');
+  assert.equal(setAirInput11(id,1).error,'shot_in_flight');
+  room.match.projectile=null;player.alive=false;
+  assert.equal(jumpActivePlayer11(id).error,'player_missing');
+  player.alive=true;room.match.activePlayerId=room.players.find(entry=>entry.id!==id).id;
+  assert.equal(jumpActivePlayer11(id).error,'not_your_turn');
+  assert.equal(setAirInput11(id,-1).error,'not_your_turn');
+});
+
+test('walking off an authored ledge begins the same airborne simulation without a target',()=>{
+  const room=startedV2(),id=room.match.activePlayerId,player=room.players.find(entry=>entry.id===id);
+  const x=imagePoint(911.5,0).x,surface=findHuancavelicaV2SurfaceBelow(room,x,imagePoint(0,450).y,100);
+  assert.ok(surface!=null);
+  player.spawn={x,y:surface-8,facing:1};player.motion=null;
+  const fromY=player.spawn.y;
+  assert.equal(setAirInput11(id,1).ok,true);
+  assert.equal(moveActivePlayer11(id,1).ok,true);
+  assert.equal(player.airborne?.reason,'ledge');
+  assert.equal(player.airborne?.vy,0);
+  assert.equal(player.spawn.y,fromY);
+  assert.equal(player.motion,null);
+  assert.equal(moveActivePlayer11(id,1).error,'player_airborne');
+  advanceAirborne11(room.code,player.airborne.updatedAt+100);
+  assert.ok(player.spawn.y>fromY);
+});
+
+test('v2 blocks firing and aim while airborne, then permits normal firing after landing',()=>{
+  const room=startedV2(),id=room.match.activePlayerId,player=room.players.find(entry=>entry.id===id);
+  assert.equal(jumpActivePlayer11(id).ok,true);
+  assert.equal(fireProjectile11(id).error,'player_airborne');
+  assert.equal(setAim11(id,50,60).error,'player_airborne');
+  for(let i=1;i<=35&&player.airborne;i+=1)advanceAirborne11(room.code,player.airborne.updatedAt+50);
+  assert.equal(player.airborne,null);
+  assert.equal(setAim11(id,50,60).ok,true);
+  assert.equal(fireProjectile11(id).ok,true);
 });
 
 test('active v2 player can fire BASIC without changing aim, power, wind or gravity',()=>{
   const room=startedV2(),id=room.match.activePlayerId,angle=room.match.aimAngle,power=room.match.aimPower,wind={...room.match.wind},result=fireProjectile11(id);assert.equal(result.ok,true);const shot=room.match.projectile;assert.ok(shot);assert.equal(shot.angle,angle);assert.equal(shot.power,power);assert.deepEqual(room.match.wind,wind);assert.ok(shot.gravity>0);assert.equal(isHuancavelicaV2Solid(room,shot.startX,shot.startY),false);assert.ok(['terrain','player','out_of_bounds','timeout'].includes(shot.impactReason));
+});
+
+test('v2 BASIC resolution does not finish on a legacy void prediction while tanks retain HP',()=>{
+  for(const shooter of ['a','b']){
+    const room=startedV2();room.match.activePlayerId=shooter;
+    assert.equal(fireProjectile11(shooter).ok,true);
+    const q=room.match.projectile;
+    advanceTurnIfDue11(room.code,q.impactAt+1);
+    advanceTurnIfDue11(room.code,q.resolveAt+1);
+    assert.equal(room.players.filter(player=>player.hp>0).length,2,shooter);
+    assert.ok(room.players.every(player=>player.alive!==false&&Number(player.motion?.toY??0)<HUANCAVELICA_V2_WORLD_HEIGHT),shooter);
+    assert.equal(room.status,'started',shooter);
+    assert.equal(room.match.result,null,shooter);
+    assert.equal(Object.keys(room.matchTelemetry?.deathAttribution??{}).length,0,shooter);
+  }
 });
 
 test('segmented projectile sweep finds thin terrain that endpoint-only sampling could tunnel through',()=>{
@@ -157,8 +225,8 @@ test('crater replay clears the same circular terrain pixels for live rooms and l
   const live=bareRoom([center]),repeat=huancavelicaV2MaskForRoom(live),late=huancavelicaV2MaskForRoom(bareRoom([{...center}]));assert.equal(repeat,huancavelicaV2MaskForRoom(live));assert.deepEqual(repeat,late);
 });
 
-test('destroying support makes a surviving player fall to the next bitmap surface',()=>{
-  const x=imagePoint(720,0).x,top=findHuancavelicaV2SurfaceBelow(bareRoom(),x,0,1000),room={mode:'survival',status:'started',players:[{id:'a',hp:100,alive:true,spawn:{x,y:top-8,facing:1}},{id:'b',hp:100,alive:true,spawn:{x:imagePoint(1100,0).x,y:imagePoint(0,380).y-8,facing:-1}}],arena:{craters:[{id:'hole',x,y:top,radius:180}]},match:{turnEndsAt:Date.now()+30000}};const before=new Map([['a',{alive:true,hp:100,spawn:{...room.players[0].spawn}}]]);settleUnsupported(room,before);assert.equal(room.players[0].motion?.type,'fall');assert.ok(room.players[0].spawn.y>top);
+test('destroying support starts gravity without snapping to a lower island',()=>{
+  const x=imagePoint(720,0).x,top=findHuancavelicaV2SurfaceBelow(bareRoom(),x,0,1000),room={mode:'survival',status:'started',players:[{id:'a',hp:100,alive:true,spawn:{x,y:top-8,facing:1}},{id:'b',hp:100,alive:true,spawn:{x:imagePoint(1100,0).x,y:imagePoint(0,380).y-8,facing:-1}}],arena:{craters:[{id:'hole',x,y:top,radius:180}]},match:{turnEndsAt:Date.now()+30000}};const before=new Map([['a',{alive:true,hp:100,spawn:{...room.players[0].spawn}}]]);settleUnsupported(room,before);assert.equal(room.players[0].airborne?.reason,'support_loss');assert.equal(room.players[0].spawn.y,top-8);assert.equal(room.players[0].motion,null);
 });
 
 test('other maps and Huancavelica v1 keep their existing collision models',()=>{
