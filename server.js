@@ -4,6 +4,7 @@ import { Server as SocketIOServer } from 'socket.io';
 import { CONFIG } from './config.js';
 import {
   activateRoom,
+  cleanupExpiredLobbies,
   createRoom,
   findRoomBySocket,
   joinRoom,
@@ -32,13 +33,13 @@ import {
 } from './afk-vote.js';
 import { isValidRoomCode, normalizePlayerName } from './validation.js';
 import { onClientEvent } from './client-events.js';
+import { clientIpFromRequest, isOriginAllowed } from './request-security.js';
 
 const connectionWindows = new Map();
 const pendingTransportRemovals = new Map();
 const TRANSPORT_RECOVERY_GRACE_MS = 15_000;
 const RECOVERABLE_DISCONNECT_REASONS = new Set(['transport close', 'transport error', 'ping timeout']);
 
-function clientIpFromRequest(req) { const forwarded = req.headers['x-forwarded-for']; if (typeof forwarded === 'string' && forwarded.length > 0) return forwarded.split(',')[0].trim(); return req.socket.remoteAddress || 'unknown'; }
 function allowConnectionAttempt(ip) { const now = Date.now(); const current = connectionWindows.get(ip); if (!current || now - current.startedAt >= 60_000) { connectionWindows.set(ip, { startedAt: now, count: 1 }); return true; } current.count += 1; return current.count <= CONFIG.connectionAttemptsPerMinute; }
 function cancelPendingTransportRemoval(socketId) { const timer = pendingTransportRemovals.get(socketId); if (timer) clearTimeout(timer); pendingTransportRemovals.delete(socketId); }
 function removeDisconnectedPlayer(socketId, reason = 'expired_transport_disconnect') {
@@ -56,15 +57,30 @@ const httpServer = createServer((req, res) => {
 });
 
 io = new SocketIOServer(httpServer, {
-  cors: { origin: CONFIG.clientOrigin, methods: ['GET', 'POST'] },
+  cors: { origin: CONFIG.allowedOrigins, methods: ['GET', 'POST'] },
   connectionStateRecovery: { maxDisconnectionDuration: TRANSPORT_RECOVERY_GRACE_MS, skipMiddlewares: true },
-  allowRequest: (req, callback) => { const ip = clientIpFromRequest(req); if (io.engine.clientsCount >= CONFIG.maxConcurrentSockets) return callback('server_capacity_reached', false); if (!allowConnectionAttempt(ip)) return callback('connection_rate_limited', false); callback(null, true); }
+  allowRequest: (req, callback) => {
+    if (!isOriginAllowed(req, CONFIG.allowedOrigins, CONFIG.allowMissingOrigin)) return callback('origin_not_allowed', false);
+    const ip = clientIpFromRequest(req, CONFIG.trustedProxyHops);
+    if (io.engine.clientsCount >= CONFIG.maxConcurrentSockets) return callback('server_capacity_reached', false);
+    if (!allowConnectionAttempt(ip)) return callback('connection_rate_limited', false);
+    callback(null, true);
+  }
 });
 function publicState(room) { ensureAfkVoteState(room); return publicRoomState9(room); }
 function emitRoomState(room) { io.to(room.code).emit('room_state', publicState(room)); }
 
+let nextLobbyCleanupAt = Date.now() + 30_000;
 setInterval(() => {
   const now = Date.now();
+  if (now >= nextLobbyCleanupAt) {
+    nextLobbyCleanupAt = now + 30_000;
+    for (const expired of cleanupExpiredLobbies(now)) {
+      io.to(expired.roomCode).emit('room_expired', { reason: expired.reason });
+      for (const socketId of expired.socketIds) io.sockets.sockets.get(socketId)?.disconnect(true);
+      console.info(`lobby removed: ${expired.roomCode} (${expired.reason})`);
+    }
+  }
   for (const room of roomStore.values()) {
     let changed = null;
     if (room.status === 'countdown' && now >= room.match?.startAt) changed = activateRoom(room.code, now);
@@ -76,6 +92,7 @@ setInterval(() => {
 }, 250).unref();
 
 io.on('connection', socket => {
+  socket.data.clientIdentity = clientIpFromRequest(socket.request, CONFIG.trustedProxyHops);
   cancelPendingTransportRemoval(socket.id);
   const recoveredRoom = findRoomBySocket(socket.id);
   if (socket.recovered && recoveredRoom) {
@@ -97,8 +114,8 @@ io.on('connection', socket => {
     emitRoomState(result.room);
   }
 
-  onClientEvent(socket, 'create_room', (payload, reply = () => {}) => { if (!allowRoomAction()) return reply({ ok: false, error: 'room_action_rate_limited' }); if (findRoomBySocket(socket.id)) return reply({ ok: false, error: 'already_in_room' }); const name = normalizePlayerName(payload?.name); if (!name) return reply({ ok: false, error: 'invalid_name' }); const result = createRoom(socket.id, name); if (!result.ok) return reply(result); result.room.players.find(p => p.id === socket.id).connected = true; socket.join(result.room.code); reply({ ok: true, room: publicState(result.room), playerId: socket.id }); emitRoomState(result.room); });
-  onClientEvent(socket, 'join_room', (payload, reply = () => {}) => { if (!allowRoomAction()) return reply({ ok: false, error: 'room_action_rate_limited' }); if (findRoomBySocket(socket.id)) return reply({ ok: false, error: 'already_in_room' }); const name = normalizePlayerName(payload?.name), code = String(payload?.code ?? '').trim().toUpperCase(); if (!name) return reply({ ok: false, error: 'invalid_name' }); if (!isValidRoomCode(code)) return reply({ ok: false, error: 'invalid_room_code' }); const result = joinRoom(code, socket.id, name); if (!result.ok) return reply(result); result.room.players.find(p => p.id === socket.id).connected = true; socket.join(code); reply({ ok: true, room: publicState(result.room), playerId: socket.id }); emitRoomState(result.room); });
+  onClientEvent(socket, 'create_room', (payload, reply = () => {}) => { if (!allowRoomAction()) return reply({ ok: false, error: 'room_action_rate_limited' }); if (findRoomBySocket(socket.id)) return reply({ ok: false, error: 'already_in_room' }); const name = normalizePlayerName(payload?.name); if (!name) return reply({ ok: false, error: 'invalid_name' }); const result = createRoom(socket.id, name, socket.data.clientIdentity); if (!result.ok) return reply(result); result.room.players.find(p => p.id === socket.id).connected = true; socket.join(result.room.code); reply({ ok: true, room: publicState(result.room), playerId: socket.id }); emitRoomState(result.room); });
+  onClientEvent(socket, 'join_room', (payload, reply = () => {}) => { if (!allowRoomAction()) return reply({ ok: false, error: 'room_action_rate_limited' }); if (findRoomBySocket(socket.id)) return reply({ ok: false, error: 'already_in_room' }); const name = normalizePlayerName(payload?.name), code = String(payload?.code ?? '').trim().toUpperCase(); if (!name) return reply({ ok: false, error: 'invalid_name' }); if (!isValidRoomCode(code)) return reply({ ok: false, error: 'invalid_room_code' }); const result = joinRoom(code, socket.id, name, socket.data.clientIdentity); if (!result.ok) return reply(result); result.room.players.find(p => p.id === socket.id).connected = true; socket.join(code); reply({ ok: true, room: publicState(result.room), playerId: socket.id }); emitRoomState(result.room); });
   onClientEvent(socket, 'set_mode', (payload, reply = () => {}) => { if (!allowRoomAction()) return reply({ ok: false, error: 'room_action_rate_limited' }); replyMutation(setGameMode(socket.id, String(payload?.mode ?? '').toLowerCase()), reply); });
   onClientEvent(socket, 'set_terrain', (payload, reply = () => {}) => { if (!allowRoomAction()) return reply({ ok: false, error: 'room_action_rate_limited' }); replyMutation(setTerrain9(socket.id, String(payload?.terrain ?? '').toLowerCase()), reply); });
   onClientEvent(socket, 'set_ready', (payload, reply = () => {}) => { if (!allowRoomAction()) return reply({ ok: false, error: 'room_action_rate_limited' }); replyMutation(setPlayerReady(socket.id, payload?.ready), reply); });

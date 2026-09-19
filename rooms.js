@@ -170,47 +170,72 @@ function generateRoomCode() {
 }
 export function getRoom(roomCode) { return roomStore.get(roomCode) ?? null; }
 export function canCreateRoom() { return roomStore.size < CONFIG.maxRooms; }
-function newPlayer(id, name, team = 'A') { return { id, name, ready: false, team, alive: true, hp: MAX_HP, spawn: null, motion: null, lastDamage: null }; }
+function newPlayer(id, name, team = 'A', clientIdentity = id) { return { id, name, clientIdentity, ready: false, team, alive: true, hp: MAX_HP, spawn: null, motion: null, lastDamage: null }; }
+function touchLobby(room, now = Date.now()) { if (room?.status === 'lobby') room.lastLobbyActivityAt = now; return room; }
+function activeRoomsOwnedBy(clientIdentity) {
+  let count = 0;
+  for (const room of roomStore.values()) {
+    if (room.ownerIdentity === clientIdentity && room.status !== 'finished') count += 1;
+  }
+  return count;
+}
 
-export function createRoom(socketId, playerName) {
+export function createRoom(socketId, playerName, clientIdentity = socketId, now = Date.now()) {
   if (!canCreateRoom()) return { ok: false, error: 'server_room_capacity' };
+  if (activeRoomsOwnedBy(clientIdentity) >= CONFIG.maxActiveRoomsPerClient) return { ok: false, error: 'client_room_quota' };
   const code = generateRoomCode();
-  const room = { code, status: 'lobby', mode: 'team', terrainPreset: 'rolling', hostId: socketId, createdAt: Date.now(), arena: null, match: null, camera: null, players: [newPlayer(socketId, playerName)] };
+  const room = { code, status: 'lobby', mode: 'team', terrainPreset: 'rolling', hostId: socketId, ownerIdentity: clientIdentity, createdAt: now, lastLobbyActivityAt: now, arena: null, match: null, camera: null, players: [newPlayer(socketId, playerName, 'A', clientIdentity)] };
   roomStore.set(code, room); return { ok: true, room };
 }
-export function joinRoom(roomCode, socketId, playerName) {
+export function joinRoom(roomCode, socketId, playerName, clientIdentity = socketId, now = Date.now()) {
   const room = getRoom(roomCode);
   if (!room) return { ok: false, error: 'room_not_found' };
   if (room.status !== 'lobby') return { ok: false, error: 'room_already_started' };
   if (room.players.length >= CONFIG.maxPlayers) return { ok: false, error: 'room_full' };
   if (room.players.some(player => player.id === socketId)) return { ok: true, room };
   const teamA = room.players.filter(player => player.team === 'A').length, teamB = room.players.filter(player => player.team === 'B').length;
-  room.players.push(newPlayer(socketId, playerName, teamA <= teamB ? 'A' : 'B'));
+  room.players.push(newPlayer(socketId, playerName, teamA <= teamB ? 'A' : 'B', clientIdentity));
+  touchLobby(room, now);
   return { ok: true, room };
 }
 export function findRoomBySocket(socketId) { for (const room of roomStore.values()) if (room.players.some(player => player.id === socketId)) return room; return null; }
+
+export function cleanupExpiredLobbies(now = Date.now(), options = {}) {
+  const inactivityMs = options.inactivityMs ?? CONFIG.lobbyInactivityMinutes * 60_000;
+  const lifetimeMs = options.lifetimeMs ?? CONFIG.maxLobbyLifetimeMinutes * 60_000;
+  const expired = [];
+  for (const room of roomStore.values()) {
+    if (room.status !== 'lobby') continue;
+    const inactiveFor = now - (room.lastLobbyActivityAt ?? room.createdAt);
+    const age = now - room.createdAt;
+    if (inactiveFor < inactivityMs && age < lifetimeMs) continue;
+    roomStore.delete(room.code);
+    expired.push({ roomCode: room.code, socketIds: room.players.map(player => player.id), reason: age >= lifetimeMs ? 'lobby_lifetime_expired' : 'lobby_inactive' });
+  }
+  return expired;
+}
 
 export function setGameMode(socketId, mode) {
   const room = findRoomBySocket(socketId); if (!room) return { ok: false, error: 'not_in_room' };
   if (room.status !== 'lobby') return { ok: false, error: 'room_already_started' }; if (room.hostId !== socketId) return { ok: false, error: 'host_only' };
   if (!VALID_MODES.has(mode)) return { ok: false, error: 'invalid_mode' }; if (room.mode === mode) return { ok: true, room };
-  room.mode = mode; for (const player of room.players) player.ready = false; return { ok: true, room };
+  room.mode = mode; for (const player of room.players) player.ready = false; touchLobby(room); return { ok: true, room };
 }
 export function setTerrainPreset(socketId, preset) {
   const room = findRoomBySocket(socketId); if (!room) return { ok: false, error: 'not_in_room' };
   if (room.status !== 'lobby') return { ok: false, error: 'room_already_started' }; if (room.hostId !== socketId) return { ok: false, error: 'host_only' };
   if (!VALID_TERRAINS.has(preset)) return { ok: false, error: 'invalid_terrain' }; if (room.terrainPreset === preset) return { ok: true, room };
-  room.terrainPreset = preset; for (const player of room.players) player.ready = false; return { ok: true, room };
+  room.terrainPreset = preset; for (const player of room.players) player.ready = false; touchLobby(room); return { ok: true, room };
 }
 export function setPlayerReady(socketId, ready) {
   const room = findRoomBySocket(socketId); if (!room) return { ok: false, error: 'not_in_room' }; if (room.status !== 'lobby') return { ok: false, error: 'room_already_started' };
-  room.players.find(entry => entry.id === socketId).ready = Boolean(ready); return { ok: true, room };
+  room.players.find(entry => entry.id === socketId).ready = Boolean(ready); touchLobby(room); return { ok: true, room };
 }
 export function setPlayerTeam(socketId, team) {
   const room = findRoomBySocket(socketId); if (!room) return { ok: false, error: 'not_in_room' }; if (room.status !== 'lobby') return { ok: false, error: 'room_already_started' };
   if (room.mode !== 'team') return { ok: false, error: 'teams_disabled' }; if (!VALID_TEAMS.has(team)) return { ok: false, error: 'invalid_team' };
   const player = room.players.find(entry => entry.id === socketId); if (player.team === team) return { ok: true, room }; if (room.players.filter(entry => entry.team === team).length >= 4) return { ok: false, error: 'team_full' };
-  player.team = team; player.ready = false; return { ok: true, room };
+  player.team = team; player.ready = false; touchLobby(room); return { ok: true, room };
 }
 
 function safeSpawnX(room, preferredX) {
@@ -490,7 +515,7 @@ export function removePlayer(socketId) {
   const previousTurnIndex = room.match?.turnIndex ?? -1, previousOrder = room.match?.turnOrder ? [...room.match.turnOrder] : [], removedOrderIndex = previousOrder.indexOf(socketId), wasActive = room.match?.activePlayerId === socketId;
   room.players = room.players.filter(player => player.id !== socketId);
   if (!room.players.length) { roomStore.delete(room.code); return { deleted: true, roomCode: room.code, room: null }; }
-  if (room.hostId === socketId) room.hostId = room.players[0].id;
+  if (room.hostId === socketId) { room.hostId = room.players[0].id; room.ownerIdentity = room.players[0].clientIdentity ?? room.players[0].id; }
   if (room.status === 'lobby') for (const player of room.players) player.ready = false;
   else if (room.match?.turnOrder) {
     room.match.turnOrder = room.match.turnOrder.filter(id => id !== socketId);

@@ -28,7 +28,7 @@ Huancavelica v2 uses `phase11-huancavelica-v2.js` and a compact cleaned 1448×10
 ## Local start
 
 ```bash
-npm install
+npm ci
 npm start
 ```
 
@@ -49,3 +49,14 @@ GET /health
 ## Deployment note
 
 GitHub CI validates repository code/tests but does not itself prove that Google Cloud Run currently serves the exact latest backend commit. Runtime deployment parity is checked separately when needed.
+
+### Request admission and proxy trust
+
+- `CLIENT_ORIGINS` is a comma-separated list of exact browser origins. The production default is `https://wzzzodiac.github.io`; add an exact local-development origin when serving the frontend locally.
+- `ALLOW_MISSING_ORIGIN=true` keeps command-line and other non-browser clients compatible. Browser requests with an Origin header must match `CLIENT_ORIGINS`.
+- `TRUST_PROXY_HOPS=0` is the safe default and ignores `X-Forwarded-For`. If the deployed Cloud Run ingress or an external load balancer has a confirmed, fixed proxy chain, set this to the number of trusted hops nearest the server. The selected client address is counted from the right of the validated IP chain, so client-supplied values before the trusted chain cannot override it.
+- Confirm the production proxy topology before changing `TRUST_PROXY_HOPS`; repository source alone does not establish whether traffic reaches Cloud Run directly or through an additional external load balancer.
+
+### Lobby abuse controls
+
+Each trusted client identity may own at most `MAX_ACTIVE_ROOMS_PER_CLIENT` unfinished rooms. Lobby-only cleanup removes rooms after `LOBBY_INACTIVITY_MINUTES` without a meaningful lobby action and enforces `MAX_LOBBY_LIFETIME_MINUTES` as an absolute cap. Countdown, active, and finished games are excluded from this cleanup.
