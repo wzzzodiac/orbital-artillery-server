@@ -141,3 +141,21 @@ are unchanged; visual antialiasing may differ within one bitmap pixel.
 Run `npm run check`, including `test/composed-v2-collision.test.js` against the
 actual Phase11 entrypoint. Pair with the Session03 frontend PR.
 
+## Session04: velocity-based v2 traversal
+
+SPACE applies one vertical impulse; held A/D accelerates in the air, release
+coasts and counter-steering brakes. Jump, ledge fall, destroyed support and
+knockback use the same swept body physics. No landing destination is selected.
+Aim/fire/rejump wait for actual landing; turn expiration waits for airborne
+players to settle. Snapshots run at 20 Hz, with bounded browser interpolation.
+
+Impulse900/gravity520 gives a roughly779-world-unit unobstructed apex, enough
+for the authored456-unit essential rise without changing geometry. Body bounds
+and visual dimensions are shared. Long suspended-process gaps simulate at most
+250ms per call and explicitly accumulate discarded time in `droppedSeconds`.
+This is bounded recovery, not a deterministic wall-clock catch-up guarantee.
+
+`npm run check` includes real-bitmap traversal, partial-edge support, head/wall/
+feet sweeps, void death, command lockouts and timeout settlement. Legacy-map
+physics, weapon balance, artwork, origin admission and rate limits are unchanged.
+

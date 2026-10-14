@@ -328,7 +328,7 @@ export function beginTurn(room, requestedIndex, now = Date.now()) {
 
 function assignArena(room) {
   room.arena = { id: `phase5b-${room.terrainPreset}-01`, terrainPreset: room.terrainPreset, terrainName: TERRAIN_LABELS[room.terrainPreset], craters: [], previewSpawns: [], worldWidth: WORLD_WIDTH, worldHeight: WORLD_HEIGHT, viewportWidth: VIEWPORT_WIDTH, viewportHeight: VIEWPORT_HEIGHT, unitsWide: 5, unitsHigh: 5, viewportUnitsWide: 1, viewportUnitsHigh: 1, seed: room.code, generatedAt: Date.now() };
-  for (const player of room.players) { player.alive = true; player.hp = MAX_HP; player.motion = null; player.lastDamage = null; }
+  for (const player of room.players) { player.alive = true; player.hp = MAX_HP; player.motion = null; player.lastDamage = null;if(Object.hasOwn(player,'airborne')){player.airborne=null;player.v2HorizontalInput=0;} }
   const positions = shuffled(evenSpawnPositions(room.players.length));
   room.players.forEach((player, index) => { const preferred = positions[index], x = safeSpawnX(room, preferred); player.spawn = makeSpawn(room, x, x < WORLD_WIDTH / 2 ? 1 : -1); });
   const now = Date.now();

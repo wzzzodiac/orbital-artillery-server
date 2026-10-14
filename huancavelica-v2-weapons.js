@@ -18,6 +18,7 @@ export function weaponPoint(shot, seconds) {
 // flights after each cut, in time order, against the CURRENT mask and players.
 function forecast(room, q, event) {
   if (!event.flight || event.resolved) return;
+  event.flight.ownerLaunchSpawn??={...room.players.find(p=>p.id===q.ownerPlayerId)?.spawn};
   const hit=traceFlight(event.flight,{players:room.players,ownerId:q.ownerPlayerId,
     firstSolid:(a,b)=>firstHuancavelicaV2SolidOnSegment(room,a,b),width,height,
     fromSeconds:Math.max(0,((q.contactsThroughAt??event.flight.startedAt)-event.flight.startedAt)/1000)});
@@ -59,7 +60,7 @@ export function prepareV2Weapon(room, q) {
   } else if (q.weaponType === 'cluster') {
     q.impacts.push(contact(q, 'parent', rules.cluster, { x: q.impactX, y: q.impactY, impactAt: q.impactAt,
       contactType: q.impactReason, targetPlayerId: q.hitPlayerId },{
-      startX:q.startX,startY:q.startY,vx:q.vx,vy:q.vy,gravity:q.gravity,windAccel:q.windAccel,startedAt:q.startedAt,collisionTimeScale:q.collisionTimeScale}));
+      startX:q.startX,startY:q.startY,vx:q.vx,vy:q.vy,gravity:q.gravity,windAccel:q.windAccel,startedAt:q.startedAt,collisionTimeScale:q.collisionTimeScale,ownerLaunchSpawn:q.ownerLaunchSpawn}));
     // Fixed launch spread and nominal 1333ms return arc, from the FINAL parent.
     // A side hit starts just outside the rock along the incoming normal.
     q.clusterImpacts = ['terrain', 'player'].includes(q.impactReason) ? [-180,-90,0,90,180].map((dx,index)=>clusterLaunch(q,dx,index)) : [];
