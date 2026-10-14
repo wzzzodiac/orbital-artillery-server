@@ -1,4 +1,5 @@
 // Pure collision contract. Identical distribution in server and browser.
+export const SIMULATION_REVISION='session06-solid-dummy-1';
 export const VEHICLE_HITBOX=Object.freeze({radius:51,centerYOffset:-10});
 export const VEHICLE_BODY=Object.freeze({halfWidth:45,top:-59,feet:8,visualWidth:109.2,visualHeight:58.5});
 export const PROJECTILE_RULES=Object.freeze({dt:.02,maxSeconds:8,ownerGraceSeconds:.14});
@@ -10,7 +11,9 @@ export function craterCutsPixel(c,px,py,scale){
 export function sweptVehicleContact(players,from,to,ownerId,ignoreOwner=false,minimumOwnerT=0){
   let first=null;
   for(const p of players??[]){
-    if(!p.spawn||p.alive===false||(p.id===ownerId&&ignoreOwner))continue;
+    // An anchored training dummy stays physically present at0HP. Online dead
+    // vehicles keep their existing non-collidable behavior.
+    if(!p.spawn||(p.alive===false&&!p.dummy)||(p.id===ownerId&&ignoreOwner))continue;
     const dx=to.x-from.x,dy=to.y-from.y,ox=from.x-p.spawn.x,oy=from.y-(p.spawn.y+VEHICLE_HITBOX.centerYOffset);
     const a=dx*dx+dy*dy,b=2*(ox*dx+oy*dy),c=ox*ox+oy*oy-VEHICLE_HITBOX.radius**2,disc=b*b-4*a*c;
     let t=c<=0?0:a>0&&disc>=0?(-b-Math.sqrt(disc))/(2*a):Infinity;
