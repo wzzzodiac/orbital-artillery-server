@@ -1,3 +1,4 @@
+import { isPublicStateView } from './rooms.js';
 import { randomInt } from 'node:crypto';
 import {
   advanceTurnIfDue6DV09 as baseAdvance,
@@ -32,6 +33,7 @@ export function chooseBalancedItem6E(rawRoll){
 }
 
 function rebalanceNewPickup(room){
+  if(isPublicStateView(room))return false;
   if(!room?.match||!Array.isArray(room.pickups))return false;
   const turn=room.match.turnNumber??0;
   let changed=false;

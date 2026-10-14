@@ -23,6 +23,14 @@ const VEHICLE_HIT_RADIUS=51;
 const HEAL_AMOUNT=20;
 const SHIELD_FACTOR=.5;
 
+// Final v0.9 balance, also consumed by the v2 one-pass resolver. Older maps keep
+// their existing composition; v2 must not first apply 45/60 HP and then restore.
+export const V09_BALLISTIC_BALANCE=Object.freeze({
+  basic:Object.freeze({damage:BASIC_DAMAGE,radius:BASIC_RADIUS,craterRadius:135,craterDepth:165}),
+  heavy:Object.freeze({damage:HEAVY_DAMAGE,radius:HEAVY_RADIUS,craterRadius:190,craterDepth:90}),
+  shieldFactor:SHIELD_FACTOR
+});
+
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const copyShield=s=>s?{...s}:null;
 

@@ -1,3 +1,4 @@
+import { isPublicStateView } from './rooms.js';
 import { randomInt } from 'node:crypto';
 import { findRoomBySocket, getRoom } from './rooms.js';
 import {
@@ -40,6 +41,7 @@ function surface(room,x){const px=clamp(x,0,WORLD_WIDTH),p=room.terrainPreset||'
 function resultFor(room){const alive=room.players.filter(p=>p.alive!==false);if(room.mode==='survival'){if(alive.length>1)return null;return{type:'survival',winnerPlayerId:alive[0]?.id??null,winnerName:alive[0]?.name??null,draw:alive.length===0};}const teams=[...new Set(alive.map(p=>p.team))];if(teams.length>1)return null;return{type:'team',winnerTeam:teams[0]??null,draw:teams.length===0};}
 function distanceToSegment(px,py,ax,ay,bx,by){const dx=bx-ax,dy=by-ay,len2=dx*dx+dy*dy;if(len2<=.0001)return Math.hypot(px-ax,py-ay);const t=clamp(((px-ax)*dx+(py-ay)*dy)/len2,0,1);return Math.hypot(px-(ax+t*dx),py-(ay+t*dy));}
 function rollNukeForNewPickup(room){
+  if(isPublicStateView(room))return false;
   if(!room?.match||!Array.isArray(room.pickups))return false;
   const turn=room.match.turnNumber??0;
   let changed=false;

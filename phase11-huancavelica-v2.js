@@ -1,4 +1,6 @@
-import { findRoomBySocket, getRoom } from './rooms.js';
+import { findRoomBySocket, getRoom, createPublicStateView } from './rooms.js';
+import { V2_SPAWN_HINTS as SPAWN_IMAGE_HINTS, v2SpawnAtHint as spawnAtHint, isV2Room as isV2, installV2ArenaMetadata } from './huancavelica-v2-state.js';
+import { usesV2CombatResolver, advanceV2Combat } from './huancavelica-v2-combat.js';
 import {
   advanceTurnIfDue9 as baseAdvance,
   disconnectPlayer9,
@@ -28,7 +30,6 @@ import {
   findHuancavelicaV2SurfaceBelow,
   findHuancavelicaV2SurfaceNear,
   firstHuancavelicaV2ProjectileImpact,
-  huancavelicaV2ImageToWorld,
   huancavelicaV2JumpPathClear,
   huancavelicaV2LandingHasRun,
   huancavelicaV2SurfaceCandidatesBelow,
@@ -49,19 +50,8 @@ const MAX_APEX=1050;
 const FALL_MIN_MS=260;
 const FALL_MAX_MS=1500;
 const VOID_FINISH_BUFFER_MS=250;
-const SPAWN_IMAGE_HINTS=Object.freeze([
-  {x:281,y:379,label:'left-main'},
-  {x:1161,y:380,label:'right-main'},
-  {x:730,y:449,label:'center-main'},
-  {x:472,y:247,label:'upper-left'},
-  {x:1118,y:250,label:'upper-right'},
-  {x:420,y:532,label:'middle-left'},
-  {x:1020,y:532,label:'middle-right'},
-  {x:730,y:786,label:'lower-center'}
-]);
 
 const clamp=(value,min,max)=>Math.max(min,Math.min(max,value));
-const isV2=room=>room?.phase11TerrainAlias===HUANCAVELICA_V2_ID||room?.arena?.phase11Theme===HUANCAVELICA_V2_ID;
 const feetY=player=>Number(player?.spawn?.y)+GROUND_OFFSET;
 
 function resultFor(room){
@@ -74,23 +64,9 @@ function validateAction(room,player,id){
   if(!room)return'not_in_room';if(room.status!=='started')return'match_not_started';if(room.match?.activePlayerId!==id)return'not_your_turn';if(room.match?.projectile)return'shot_in_flight';if(!player?.spawn||player.alive===false)return'player_missing';if(player.motion?.endsAt&&Date.now()<Number(player.motion.endsAt))return'player_in_motion';return null;
 }
 
-function spawnAtHint(room,hint,index){
-  const world=huancavelicaV2ImageToWorld(hint.x,hint.y),surface=findHuancavelicaV2SurfaceNear(room,world.x,world.y,80,100)??findHuancavelicaV2SurfaceBelow(room,world.x,Math.max(0,world.y-100),220);
-  if(surface==null)throw new Error(`Huancavelica v2 spawn hint ${hint.label} has no playable surface`);
-  return{x:Math.round(world.x),y:Math.round(surface-GROUND_OFFSET),facing:index%2===0?1:-1};
-}
-
-function assignV2Spawns(room){
-  const key=`${room.match?.countdownStartedAt??room.startedAt??'lobby'}:${room.players.length}`;
-  if(room.phase11SpawnKey===key)return;
-  room.players.forEach((player,index)=>{player.spawn=spawnAtHint(room,SPAWN_IMAGE_HINTS[index%SPAWN_IMAGE_HINTS.length],index);player.motion=null;player.phase11SpawnHint=SPAWN_IMAGE_HINTS[index%SPAWN_IMAGE_HINTS.length].label;});
-  room.phase11SpawnKey=key;
-}
-
 function installV2Arena(room){
   if(!isV2(room)||!room?.arena)return room;
-  Object.assign(room.arena,{terrainPreset:HUANCAVELICA_V2_ID,terrainName:HUANCAVELICA_V2_NAME,phase11Theme:HUANCAVELICA_V2_ID,terrainRevision:HUANCAVELICA_V2_REVISION,collisionModel:HUANCAVELICA_V2_COLLISION_MODEL,worldWidth:HUANCAVELICA_V2_WORLD_WIDTH,worldHeight:HUANCAVELICA_V2_WORLD_HEIGHT,voidFloor:true,platforms:[],legacyCollisionBase:COLLISION_BASE,bitmapTerrain:{width:HUANCAVELICA_V2_IMAGE_WIDTH,height:HUANCAVELICA_V2_IMAGE_HEIGHT,worldWidth:HUANCAVELICA_V2_WORLD_WIDTH,worldHeight:HUANCAVELICA_V2_WORLD_HEIGHT,uniformScale:HUANCAVELICA_V2_SCALE,maskSource:'cleaned-terrain-alpha-guided-by-supplied-mask'}});
-  if(['countdown','started','finished'].includes(room.status))assignV2Spawns(room);
+  installV2ArenaMetadata(room);
   snapPickups(room);
   return room;
 }
@@ -167,7 +143,13 @@ function snapPickups(room){if(!isV2(room))return;room.pickups=(room.pickups??[])
 
 function fireOnV2(id){const room=findRoomBySocket(id);installV2Arena(room);const result=baseFire(id);if(result?.ok&&isV2(result.room)){installV2Arena(result.room);adjustProjectile(result.room,result.room.match?.projectile);}return result;}
 function advanceOnV2(code,now=Date.now()){
-  const room=getRoom(code);if(!isV2(room))return baseAdvance(code,now);installV2Arena(room);const knownIds=new Set(room.arena?.craters?.map(crater=>crater.id)??[]),hints=projectileCraterHints(room.match?.projectile),before=new Map(room.players.map(player=>[player.id,{alive:player.alive,hp:player.hp,spawn:player.spawn?{...player.spawn}:null,lastDamageAt:player.lastDamage?.at}]));const changed=baseAdvance(code,now),target=changed??room;if(target&&isV2(target)){bindNewCraters(target,knownIds,hints);installV2Arena(target);settleUnsupported(target,before);snapPickups(target);}return changed;
+  const room=getRoom(code);if(!isV2(room))return baseAdvance(code,now);if(room.status!=='started')return null;installV2Arena(room);
+  if(usesV2CombatResolver(room.match?.projectile)){
+    const changed=advanceV2Combat(room,now);
+    if(changed){basePublic(room);installV2Arena(room);}
+    return changed;
+  }
+  const knownIds=new Set(room.arena?.craters?.map(crater=>crater.id)??[]),hints=projectileCraterHints(room.match?.projectile),before=new Map(room.players.map(player=>[player.id,{alive:player.alive,hp:player.hp,spawn:player.spawn?{...player.spawn}:null,lastDamageAt:player.lastDamage?.at}]));const changed=baseAdvance(code,now),target=changed??room;if(target&&isV2(target)){bindNewCraters(target,knownIds,hints);installV2Arena(target);settleUnsupported(target,before);snapPickups(target);}return changed;
 }
 
 function decoratePublic(room,state){
@@ -176,13 +158,30 @@ function decoratePublic(room,state){
   return state;
 }
 
-export function publicRoomState11(room){if(isV2(room))installV2Arena(room);return decoratePublic(room,basePublic(room));}
+export function publicRoomState11(room){
+  if(!isV2(room))return decoratePublic(room,basePublic(room));
+  const view=createPublicStateView(room);
+  installV2Arena(view);
+  return decoratePublic(view,basePublic(view));
+}
 export function setTerrain11(id,terrain){const requested=typeof terrain==='string'?terrain.toLowerCase():null;if(!requested||requested===LEGACY_HUANCAVELICA_ID)return{ok:false,error:'invalid_terrain'};const v2=requested===HUANCAVELICA_V2_ID,result=baseSetTerrain(id,v2?COLLISION_BASE:requested);if(!result.ok)return result;result.room.phase11TerrainAlias=v2?HUANCAVELICA_V2_ID:null;result.room.phase11TerrainRevision=v2?HUANCAVELICA_V2_REVISION:null;result.room.phase11SpawnKey=null;for(const player of result.room.players??[])player.ready=false;if(v2)installV2Arena(result.room);return result;}
 export function moveActivePlayer11(id,direction){const room=findRoomBySocket(id);return isV2(room)?moveOnV2(id,direction):baseMove(id,direction);}
 export function jumpActivePlayer11(id,direction){const room=findRoomBySocket(id);return isV2(room)?jumpOnV2(id,direction):baseJump(id,direction);}
 export function fireProjectile11(id){const room=findRoomBySocket(id);return isV2(room)?fireOnV2(id):baseFire(id);}
 export function advanceTurnIfDue11(code,now=Date.now()){return advanceOnV2(code,now);}
-export function rematchRoom11(id,options={}){const room=findRoomBySocket(id),keepV2=isV2(room)&&!options?.randomMap,result=baseRematch(id,options);if(result?.ok){result.room.phase11TerrainAlias=keepV2?HUANCAVELICA_V2_ID:null;result.room.phase11TerrainRevision=keepV2?HUANCAVELICA_V2_REVISION:null;result.room.phase11SpawnKey=null;if(keepV2)installV2Arena(result.room);}return result;}
+export function rematchRoom11(id,options={}){
+  const room=findRoomBySocket(id),keepV2=isV2(room)&&!options?.randomMap;
+  const oldAlias=room?.phase11TerrainAlias;
+  // A random rematch initializes its selected legacy map, not the previous v2.
+  const clearAlias=Boolean(room&&isV2(room)&&options?.randomMap&&room.hostId===id&&room.status==='finished');
+  if(clearAlias)room.phase11TerrainAlias=null;
+  const result=baseRematch(id,options);
+  if(!result?.ok){if(clearAlias)room.phase11TerrainAlias=oldAlias;return result;}
+  result.room.phase11TerrainAlias=keepV2?HUANCAVELICA_V2_ID:null;
+  result.room.phase11TerrainRevision=keepV2?HUANCAVELICA_V2_REVISION:null;
+  if(keepV2)installV2Arena(result.room);
+  return result;
+}
 
 export const publicRoomState9=publicRoomState11;
 export const setTerrain9=setTerrain11;

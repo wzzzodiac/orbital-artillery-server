@@ -1,5 +1,16 @@
 import { randomInt } from 'node:crypto';
 import { CONFIG } from './config.js';
+import { initializeV2Spawns } from './huancavelica-v2-state.js';
+
+// Legacy public decorators may normalize a detached view, but cannot maintain
+// pickups or roll RNG while serializing the authoritative v2 room.
+const publicStateViews = new WeakSet();
+export function createPublicStateView(room) {
+  const view = structuredClone(room);
+  publicStateViews.add(view);
+  return view;
+}
+export function isPublicStateView(room) { return publicStateViews.has(room); }
 
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const VALID_TEAMS = new Set(['A', 'B']);
@@ -42,6 +53,14 @@ const KNOCKBACK_MAX_SECONDS = 2.4;
 const KNOCKBACK_MIN_STRENGTH = 0.10;
 const KNOCKBACK_MAX_SPEED = 520;
 const KNOCKBACK_LIFT_BIAS = 115;
+
+export const COMBAT_MOTION_RULES = Object.freeze({
+  gravity: KNOCKBACK_GRAVITY, dt: KNOCKBACK_DT, maxSeconds: KNOCKBACK_MAX_SECONDS,
+  minStrength: KNOCKBACK_MIN_STRENGTH, maxSpeed: KNOCKBACK_MAX_SPEED,
+  liftBias: KNOCKBACK_LIFT_BIAS, radius: EXPLOSION_RADIUS,
+  groundOffset: VEHICLE_GROUND_OFFSET, fallMs: FALL_DURATION_MS,
+  finishBufferMs: VOID_FINISH_BUFFER_MS
+});
 
 // EASY TERRAIN RENAMING: change ONLY the text on the right.
 const TERRAIN_LABELS = Object.freeze({
@@ -269,7 +288,7 @@ function rotateOrderTo(order, starterId) {
 function createWind() { const direction = randomInt(2) === 0 ? -1 : 1, strength = randomInt(5, 61); return { direction: direction < 0 ? 'left' : 'right', strength, signed: strength * direction }; }
 function activePlayer(room) { return room.players.find(player => player.id === room.match?.activePlayerId) ?? null; }
 
-function resultFor(room) {
+export function resultFor(room) {
   const alive = room.players.filter(player => player.alive !== false);
   if (room.mode === 'survival') {
     if (alive.length > 1) return null;
@@ -279,7 +298,7 @@ function resultFor(room) {
   if (teams.length > 1) return null;
   return { type: 'team', winnerTeam: teams[0] ?? null, draw: teams.length === 0 };
 }
-function finishMatch(room, result, now = Date.now()) {
+export function finishMatch(room, result, now = Date.now()) {
   if (!result || room.status === 'finished') return room;
   room.status = 'finished'; room.match.result = result; room.match.finishedAt = now; room.match.activePlayerId = null; room.match.turnEndsAt = null; room.match.projectile = null; room.camera = { mode: 'follow', targetPlayerId: result.winnerPlayerId ?? room.players.find(player => player.alive !== false)?.id ?? room.players[0]?.id ?? null };
   return room;
@@ -291,7 +310,7 @@ function beginVoidResolution(room, player, now = Date.now(), motionEndsAt = now 
   return room;
 }
 
-function beginTurn(room, requestedIndex, now = Date.now()) {
+export function beginTurn(room, requestedIndex, now = Date.now()) {
   if (room.status === 'finished') return room;
   const liveIds = new Set(room.players.filter(player => player.alive !== false).map(player => player.id));
   room.match.turnOrder = room.match.turnOrder.filter(id => room.players.some(player => player.id === id));
@@ -323,7 +342,7 @@ export function startRoom(socketId) {
   const room = findRoomBySocket(socketId); if (!room) return { ok: false, error: 'not_in_room' }; if (room.status !== 'lobby') return { ok: false, error: 'room_already_started' }; if (room.hostId !== socketId) return { ok: false, error: 'host_only' };
   if (room.players.length < 2) return { ok: false, error: 'not_enough_players' }; if (!room.players.every(player => player.ready)) return { ok: false, error: 'players_not_ready' };
   if (room.mode === 'team') { const teamA = room.players.filter(player => player.team === 'A').length, teamB = room.players.filter(player => player.team === 'B').length; if (!teamA || !teamB) return { ok: false, error: 'both_teams_required' }; }
-  assignArena(room); room.status = 'countdown'; room.startedAt = Date.now(); return { ok: true, room };
+  assignArena(room); initializeV2Spawns(room); room.status = 'countdown'; room.startedAt = Date.now(); return { ok: true, room };
 }
 export function activateRoom(roomCode, now = Date.now()) { const room = getRoom(roomCode); if (!room || room.status !== 'countdown') return null; room.status = 'started'; room.match.activatedAt = now; return beginTurn(room, 0, now); }
 
