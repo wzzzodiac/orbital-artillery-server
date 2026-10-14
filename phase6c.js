@@ -1,3 +1,4 @@
+import { isPublicStateView } from './rooms.js';
 import { randomInt } from 'node:crypto';
 import { findRoomBySocket, getRoom } from './rooms.js';
 import {
@@ -44,6 +45,7 @@ function baseY(p,x){switch(p){case'terraces':{let y=3520+Math.sin(x/560)*100;y=p
 function surface(room,x){const px=clamp(x,0,WORLD_WIDTH),p=room.terrainPreset||'rolling';if((HOLES[p]||[]).some(([l,r])=>px>=l&&px<=r))return WORLD_HEIGHT;let y=baseY(p,px);for(const c of room.arena?.craters||[]){const dx=Math.abs(px-c.x);if(dx<c.radius)y+=c.depth*Math.sqrt(Math.max(0,1-(dx/c.radius)**2));}return clamp(y,120,WORLD_HEIGHT);}
 
 function rollPhase6cForNewPickup(room) {
+  if (isPublicStateView(room)) return false;
   if (!room?.match || !Array.isArray(room.pickups)) return false;
   const turn = room.match.turnNumber ?? 0;
   let changed = false;

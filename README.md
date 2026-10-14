@@ -48,6 +48,36 @@ GET /health
 
 ## Deployment note
 
+### Session 01: v2 combat and player-state ownership
+
+Huancavelica v2 BASIC and Heavy now resolve through `huancavelica-v2-combat.js`:
+final projectile contact -> balanced damage/Shield -> bitmap cut -> bitmap
+knockback/support -> definitive survival -> result -> telemetry. This path never
+runs the legacy heightfield damage/support pass or resurrects a player afterward.
+It reuses the existing 10/20 damage balance and combat-motion coefficients.
+Results are recomputed from survivors when the attack finishes; no pending result
+remains after finalization. Other weapons and other maps keep their existing
+resolution paths; the audit's Cluster/Air Strike/Nuke findings are not fixed here.
+
+`huancavelica-v2-state.js` assigns authored spawns only from `startRoom`, including
+legitimate rematches. Neither participant count nor a public-state read can spawn
+players. The composed v2 public serializer decorates a detached read-only view;
+legacy pickup maintenance/RNG is disabled for that view. Authoritative maintenance
+continues on mutation/tick paths. Legacy map implementations remain available.
+
+Regression command: `node --test test/composed-v2-combat.test.js`. These tests import
+the same composed exports as `server.js`, covering the authored 45/55/wind0 shot,
+Team/Survival winners and simultaneous KO, Shield, bitmap void death, disconnect,
+rematch and serialization purity. Full gate: `npm ci --ignore-scripts` followed by
+`npm run check`.
+
+Local play (PowerShell): set `$env:PORT='3000'` and
+`$env:CLIENT_ORIGINS='http://127.0.0.1:4173'`, then run `npm start` here. In the
+unchanged frontend checkout, run `python -m http.server 4173 --bind 127.0.0.1`.
+Open `http://127.0.0.1:4173` in two browser tabs; create/join, select v2, ready and
+start. A third participant can be used to verify disconnect without ending the
+two survivors' match. No production deployment is required.
+
 GitHub CI validates repository code/tests but does not itself prove that Google Cloud Run currently serves the exact latest backend commit. Runtime deployment parity is checked separately when needed.
 
 ### Request admission and proxy trust

@@ -1,3 +1,4 @@
+import { isPublicStateView } from './rooms.js';
 import { randomInt } from 'node:crypto';
 import { findRoomBySocket, getRoom } from './rooms.js';
 import { PHASE6E_ITEM_POOL, PHASE6E_POOL_TOTAL, chooseBalancedItem6E } from './phase6e.js';
@@ -120,6 +121,7 @@ function spawnPhase9Pickup(room){
 }
 
 function maintainPhase9Pickups(room){
+  if(isPublicStateView(room))return false;
   ensurePhase9(room);if(room?.status!=='started'||!room.match)return false;
   const turn=room.match.turnNumber??0;
   room.pickups=room.pickups.filter(box=>turn<=Number(box.expiresAfterTurn??turn));
