@@ -1,6 +1,6 @@
 import { findRoomBySocket, getRoom, createPublicStateView } from './rooms.js';
 import { V2_SPAWN_HINTS as SPAWN_IMAGE_HINTS, v2SpawnAtHint as spawnAtHint, isV2Room as isV2, installV2ArenaMetadata } from './huancavelica-v2-state.js';
-import { usesV2CombatResolver, advanceV2Combat } from './huancavelica-v2-combat.js';
+import { usesV2CombatResolver, advanceV2Combat, prepareV2Weapon } from './huancavelica-v2-combat.js';
 import {
   advanceTurnIfDue9 as baseAdvance,
   disconnectPlayer9,
@@ -141,7 +141,21 @@ function settleUnsupported(room,before=new Map()){
 function safePickupSurface(room,x,y=0){const direct=findHuancavelicaV2SurfaceBelow(room,x,Math.max(0,y),HUANCAVELICA_V2_WORLD_HEIGHT-y);if(direct!=null&&huancavelicaV2LandingHasRun(room,x,direct,18,85))return{x,surface:direct};for(let radius=15;radius<=240;radius+=15)for(const candidate of[x-radius,x+radius]){const surface=findHuancavelicaV2SurfaceBelow(room,candidate,0,HUANCAVELICA_V2_WORLD_HEIGHT);if(surface!=null&&huancavelicaV2LandingHasRun(room,candidate,surface,18,85))return{x:candidate,surface};}return null;}
 function snapPickups(room){if(!isV2(room))return;room.pickups=(room.pickups??[]).filter(box=>{const support=safePickupSurface(room,Number(box.x),Math.max(0,Number(box.y??0)));if(!support)return false;box.x=Math.round(support.x);box.y=Math.round(support.surface-24);return true;});}
 
-function fireOnV2(id){const room=findRoomBySocket(id);installV2Arena(room);const result=baseFire(id);if(result?.ok&&isV2(result.room)){installV2Arena(result.room);adjustProjectile(result.room,result.room.match?.projectile);}return result;}
+function fireOnV2(id){
+  const room=findRoomBySocket(id);installV2Arena(room);
+  const result=baseFire(id);
+  if(result?.ok&&isV2(result.room)){
+    installV2Arena(result.room);
+    const q=result.room.match?.projectile;
+    if(q){
+      // Session01 ballistic behavior is unchanged. Multi-impact weapons own
+      // their final geometry; discard legacy subimpact forecasts entirely.
+      if(['basic','heavy'].includes(q.weaponType??'basic'))adjustProjectile(result.room,q);
+      prepareV2Weapon(result.room,q);
+    }
+  }
+  return result;
+}
 function advanceOnV2(code,now=Date.now()){
   const room=getRoom(code);if(!isV2(room))return baseAdvance(code,now);if(room.status!=='started')return null;installV2Arena(room);
   if(usesV2CombatResolver(room.match?.projectile)){

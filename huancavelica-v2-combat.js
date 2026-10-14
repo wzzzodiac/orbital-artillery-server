@@ -1,6 +1,8 @@
 import { beginTurn, finishMatch, resultFor, COMBAT_MOTION_RULES as motion } from './rooms.js';
 import { V09_BALLISTIC_BALANCE } from './phase6d-v09.js';
 import { snapshotCombatState, recordCombatEvents } from './phase7a1.js';
+import { usesV2MultiImpact, prepareV2Weapon, refreshV2Weapon, applyV2WeaponImpact } from './huancavelica-v2-weapons.js';
+export { prepareV2Weapon };
 import {
   HUANCAVELICA_V2_WORLD_WIDTH as width, HUANCAVELICA_V2_WORLD_HEIGHT as height,
   findHuancavelicaV2SurfaceBelow, firstHuancavelicaV2SolidOnSegment
@@ -8,7 +10,7 @@ import {
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const voidY = height + 120;
-export const usesV2CombatResolver = q => Boolean(q && ['basic', 'heavy'].includes(q.weaponType ?? 'basic'));
+export const usesV2CombatResolver = q => Boolean(q && (['basic', 'heavy'].includes(q.weaponType ?? 'basic') || usesV2MultiImpact(q)));
 
 function fallTo(room, player, surface, now) {
   const from = { ...player.spawn }, voided = surface == null;
@@ -99,14 +101,35 @@ function resolveImpact(room, q, now) {
   room.match.turnEndsAt = q.resolveAt;
 }
 
-// Sole owner of v2 BASIC/Heavy resolution. No legacy damage/support pass and
+// Sole owner of v2 combat resolution. No legacy damage/support pass and
 // no restoration after results or telemetry have observed a temporary death.
 export function advanceV2Combat(room, now) {
   if (room.status !== 'started') return null;
   const q = room.match?.projectile;
   if (!usesV2CombatResolver(q)) return null;
   let changed = false;
-  if (!q.resolutionApplied && now >= q.impactAt) {
+  if (usesV2MultiImpact(q)) {
+    refreshV2Weapon(room,q);
+    // Resolve chronological contacts, refreshing survivors against each new
+    // bitmap. A slow/batched tick produces the same sequence as small ticks.
+    for (;;) {
+      const event = q.impacts.filter(e => !e.resolved).sort((a,b) => a.impactAt-b.impactAt || a.id.localeCompare(b.id))[0];
+      if (!event || event.impactAt > now) break;
+      const before = snapshotCombatState(room);
+      applyV2WeaponImpact(room,q,event);
+      let latestEnd=0;
+      for (const p of room.players) if(p.alive!==false&&p.spawn) {
+        const surface=findHuancavelicaV2SurfaceBelow(room,p.spawn.x,Math.max(0,p.spawn.y+motion.groundOffset-3),height);
+        latestEnd=Math.max(latestEnd,fallTo(room,p,surface,event.impactAt));
+      }
+      if(latestEnd)q.resolveAt=Math.max(q.resolveAt,latestEnd+motion.finishBufferMs);
+      recordCombatEvents(room,before,{sourceId:q.ownerPlayerId,weaponType:q.weaponType,attackId:q.id,impactId:event.id});
+      q.contactsThroughAt=event.impactAt;
+      refreshV2Weapon(room,q);
+      room.match.pendingResult=resultFor(room);
+      changed=true;
+    }
+  } else if (!q.resolutionApplied && now >= q.impactAt) {
     const before = snapshotCombatState(room);
     resolveImpact(room, q, now);
     // 6/7. Publish only definitive survival/damage; finalization waits for motion.

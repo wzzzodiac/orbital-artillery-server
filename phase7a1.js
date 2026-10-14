@@ -34,4 +34,15 @@ export function rematchRoom7A1(id,{randomMap=false}={}){const room=findRoomBySoc
 export const phase7a1TestHooks=Object.freeze({snapshot,observe});
 
 export const snapshotCombatState=snapshot;
-export const recordCombatEvents=observe;
+export function recordCombatEvents(room,before,context={}) {
+  const prior=new Set(ensureTelemetry(room).events);
+  observe(room,before,context);
+  for(const event of ensureTelemetry(room).events) if(!prior.has(event)) {
+    if(context.attackId)event.attackId=context.attackId;
+    if(context.impactId){
+      event.impactId=context.impactId;
+      event.id=`${context.impactId}:${event.type}:${event.targetPlayerId??event.playerId??event.sourcePlayerId??''}`;
+    }
+  }
+  return room;
+}
