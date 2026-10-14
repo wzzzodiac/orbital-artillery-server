@@ -1,5 +1,6 @@
 import { isPublicStateView } from './rooms.js';
 import { randomInt } from 'node:crypto';
+import {collectOneByTouch as collectSharedPickup} from './simulation/rules.js';
 import { findRoomBySocket, getRoom } from './rooms.js';
 import { PHASE6E_ITEM_POOL, PHASE6E_POOL_TOTAL, chooseBalancedItem6E } from './phase6e.js';
 import { phase7a1TestHooks } from './phase7a1.js';
@@ -135,14 +136,7 @@ function maintainPhase9Pickups(room){
 }
 
 function collectOneByTouch(room,player){
-  ensurePhase9(room);if(!player?.spawn||player.alive===false)return false;
-  const turn=room.match?.turnNumber??0;if(player.pickupCollectedTurn===turn)return false;
-  const slot=player.inventory.findIndex(item=>item==null);if(slot<0)return false;
-  let bestIndex=-1,bestDistance=Infinity;
-  for(let i=0;i<room.pickups.length;i+=1){const box=room.pickups[i],distance=Math.hypot(player.spawn.x-box.x,(player.spawn.y-GROUND_OFFSET)-box.y);if(distance<=PICKUP_TOUCH_RADIUS&&distance<bestDistance){bestDistance=distance;bestIndex=i;}}
-  if(bestIndex<0)return false;
-  const [box]=room.pickups.splice(bestIndex,1),label=box.type==='heal'?HEAL_LABEL:box.label;
-  player.inventory[slot]={type:box.type,label,pickedAtTurn:turn};player.lastPickup={type:box.type,label,method:'touch',at:Date.now()};player.pickupCollectedTurn=turn;return true;
+  ensurePhase9(room);return collectSharedPickup(room,player,Date.now());
 }
 
 function runMovementWithPhase9Collection(id,action){

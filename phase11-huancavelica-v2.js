@@ -4,6 +4,12 @@ import {V2_AIR_PHYSICS,advanceV2AirbornePlayer,setV2AirInput,startV2Airborne,v2G
 import { V2_SPAWN_HINTS as SPAWN_IMAGE_HINTS, v2SpawnAtHint as spawnAtHint, isV2Room as isV2, installV2ArenaMetadata } from './huancavelica-v2-state.js';
 import { usesV2CombatResolver, advanceV2Combat, prepareV2Weapon } from './huancavelica-v2-combat.js';
 import {projectileMuzzle,traceFlight} from './simulation/collision.js';
+import {adjustProjectile as adjustSharedProjectile,createV2Attack} from './simulation/projectiles.js';
+import {useUtility} from './simulation/rules.js';
+import {v2Terrain} from './huancavelica-v2-bitmap.js';
+import * as sharedWeapons from './huancavelica-v2-weapons.js';
+import {advanceBodies} from './simulation/core.js';
+import * as sharedPhysics from './huancavelica-v2-airborne.js';
 import {
   advanceTurnIfDue9 as baseAdvance,
   disconnectPlayer9,
@@ -97,30 +103,7 @@ function ensureMuzzleOutside(room,shot){
   const changed=next.startX!==shot.startX||next.startY!==shot.startY;Object.assign(shot,next);return changed;
 }
 
-function adjustProjectile(room,q){
-  if(!q)return false;
-  const shots=q.weaponType==='triple'&&Array.isArray(q.volley)?q.volley:[q];
-  for(const shot of shots){
-    shot.ownerLaunchSpawn={...room.players.find(p=>p.id===q.ownerPlayerId).spawn};
-    const physicalSpeed=320+Number(shot.power??q.power??55)*9;
-    const oldScale=physicalSpeed/Math.max(.001,Math.hypot(shot.vx,shot.vy));
-    shot.vx*=oldScale;shot.vy*=oldScale;shot.gravity*=oldScale**2;shot.windAccel*=oldScale**2;
-    shot.collisionTimeScale=1;
-    Object.assign(shot,projectileMuzzle(shot,(x,y)=>isHuancavelicaV2Solid(room,x,y)));
-    const hit=traceFlight(shot,{players:room.players,ownerId:q.ownerPlayerId,firstSolid:(a,b)=>firstHuancavelicaV2SolidOnSegment(room,a,b)});
-    // Preserve the existing minimum visible duration without moving the contact.
-    const minimumMs=(q.weaponType??'basic')==='basic'?4000:4667;
-    const stretch=hit.seconds>0?Math.max(1,minimumMs/(hit.seconds*1000)):1;
-    shot.vx/=stretch;shot.vy/=stretch;shot.gravity/=stretch**2;shot.windAccel/=stretch**2;shot.collisionTimeScale*=stretch;
-    Object.assign(shot,{impactX:hit.x,impactY:hit.y,impactReason:hit.type,hitPlayerId:hit.targetPlayerId,
-      durationMs:Math.max(0,hit.seconds*stretch*1000),impactAt:shot.startedAt+Math.max(0,hit.seconds*stretch*1000)});
-  }
-  if(q.weaponType==='triple'){
-    const middle=q.volley[1];for(const key of ['startX','startY','vx','vy','gravity','windAccel','collisionTimeScale','impactX','impactY','impactAt','durationMs','impactReason','hitPlayerId'])q[key]=middle[key];
-    q.specialResolveAt=Math.max(...q.volley.map(s=>s.impactAt));q.resolveAt=q.specialResolveAt+900;
-  }else q.resolveAt=q.impactAt+900;
-  room.match.turnEndsAt=q.resolveAt;return true;
-}
+function adjustProjectile(room,q){return adjustSharedProjectile(room,q,v2Terrain);}
 
 
 function settleUnsupported(room){
@@ -135,6 +118,13 @@ function snapPickups(room){if(!isV2(room))return;room.pickups=(room.pickups??[])
 function fireOnV2(id){
   const room=findRoomBySocket(id);installV2Arena(room);
   if(room?.players.find(p=>p.id===id)?.airborne)return{ok:false,error:'player_airborne'};
+  const player=room?.players.find(p=>p.id===id),item=player?.inventory?.[(player.selectedItemSlot??1)-2];
+  if(['heal','shield'].includes(item?.type)){
+    const error=validateAction(room,player,id);if(error)return{ok:false,error};
+    const before=snapshotCombatState(room),used=useUtility(player,Date.now(),room.match.turnNumber);
+    if(used.ok)recordCombatEvents(room,before,{actorId:id,sourceId:id});
+    return{...used,room};
+  }
   const result=baseFire(id);
   if(result?.ok&&isV2(result.room)){
     installV2Arena(result.room);
@@ -142,8 +132,7 @@ function fireOnV2(id){
     if(q){
       // Reconcile every designator with the shared collision contract before
       // the Session02 impact resolver constructs its definitive events.
-      adjustProjectile(result.room,q);
-      prepareV2Weapon(result.room,q);
+      Object.assign(q,createV2Attack(result.room,player,{id:q.id,startedAt:q.startedAt,weaponType:q.weaponType??'basic'},v2Terrain,sharedWeapons));
     }
   }
   return result;
@@ -151,13 +140,7 @@ function fireOnV2(id){
 function advanceOnV2(code,now=Date.now()){
   const room=getRoom(code);if(!isV2(room))return baseAdvance(code,now);if(room.status!=='started')return null;installV2Arena(room);
   const activeBefore=room.match.activePlayerId,before=snapshotCombatState(room),q=room.match.projectile;
-  let changed=false;
-  for(const p of room.players){
-    if(p.alive===false||!p.spawn)continue;
-    if(p.id!==room.match.activePlayerId||q||now>=room.match.turnEndsAt){p.v2HorizontalInput=0;if(p.airborne)p.airborne.input=0;}
-    if(!p.airborne&&(!p.motion||p.motion.endsAt<=now)&&v2GroundSurface(room,p.spawn)==null)changed=startV2Airborne(p,now,{reason:'support_loss'})||changed;
-    changed=advanceV2AirbornePlayer(room,p,now,()=>phase9TestHooks.collectOneByTouch?.(room,p))||changed;
-  }
+  let changed=advanceBodies(room,now,sharedPhysics,p=>phase9TestHooks.collectOneByTouch?.(room,p));
   recordCombatEvents(room,before,{sourceId:q?.ownerPlayerId??null,weaponType:q?.weaponType??'movement'});
   let result=null;
   if(usesV2CombatResolver(q))result=advanceV2Combat(room,now);
