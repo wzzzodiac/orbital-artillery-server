@@ -163,5 +163,6 @@ function advanceV2AirbornePlayer(room, player, now, onStep=()=>{}) {
   return true;
 }
 
-return Object.freeze({v2GroundSurface,startV2Airborne,setV2AirInput,walkV2Player,advanceV2AirbornePlayer});
+const scoped=fn=>(room,...args)=>terrain.withTerrainSnapshot(room,()=>fn(room,...args));
+return Object.freeze({v2GroundSurface:scoped(v2GroundSurface),startV2Airborne,setV2AirInput,walkV2Player:scoped(walkV2Player),advanceV2AirbornePlayer:scoped(advanceV2AirbornePlayer)});
 }

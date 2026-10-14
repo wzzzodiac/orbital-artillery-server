@@ -174,3 +174,18 @@ ticks, including Shield, Heal, pickup touch and cuts. The paired browser harness
 compares canonical output (1e-6 world tolerance) with this Node baseline; paired
 shared-source files must be kept byte-identical. No new runtime dependencies.
 
+## Session06: bounded local practice policy
+
+`simulation/practice.js` is the pure local-session adapter distributed identically
+to the frontend. It uses the same core, with one controller and an anchored,
+damageable dummy excluded from turn rotation, movement and support/knockback.
+Online clients cannot set this flag through the strict protocol schemas.
+
+Tests exercise all weapons, a100HP dummy's actual elimination without ending
+practice, recovery/reset, repeated lifecycle and finite cut/attack/pickup budgets.
+`terrain-budget.test.js` also measures400 cuts/100 actual airborne steps. On the
+local test host, read-only terrain query scopes reduced this measurement from
+754.5ms to about22ms, without changing the canonical equivalence digest. This is
+a local microbenchmark, not a multiplayer load or browser-frame-rate guarantee.
+The existing online authority, deployment, admission and weapon rules remain.
+
