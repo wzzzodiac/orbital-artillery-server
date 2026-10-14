@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import {craterCutsPixel} from './simulation/collision.js';
 
 export const HUANCAVELICA_V2_ID='huancavelica-v2';
 export const HUANCAVELICA_V2_NAME='Huancavelica Simulator v2';
@@ -32,7 +33,7 @@ export function clearHuancavelicaV2Crater(mask,crater){
   const center=worldToHuancavelicaV2Image(x,y),pixelRadius=radius/HUANCAVELICA_V2_SCALE;
   const minX=clamp(Math.floor(center.x-pixelRadius),0,HUANCAVELICA_V2_IMAGE_WIDTH-1),maxX=clamp(Math.ceil(center.x+pixelRadius),0,HUANCAVELICA_V2_IMAGE_WIDTH-1);
   const minY=clamp(Math.floor(center.y-pixelRadius),0,HUANCAVELICA_V2_IMAGE_HEIGHT-1),maxY=clamp(Math.ceil(center.y+pixelRadius),0,HUANCAVELICA_V2_IMAGE_HEIGHT-1);
-  for(let py=minY;py<=maxY;py+=1){const dy=py+.5-center.y;for(let px=minX;px<=maxX;px+=1){const dx=px+.5-center.x;if(dx*dx+dy*dy<=pixelRadius*pixelRadius)clearBit(mask,bitIndex(px,py));}}
+  for(let py=minY;py<=maxY;py+=1)for(let px=minX;px<=maxX;px+=1)if(craterCutsPixel(crater,px,py,HUANCAVELICA_V2_SCALE))clearBit(mask,bitIndex(px,py));
   return mask;
 }
 

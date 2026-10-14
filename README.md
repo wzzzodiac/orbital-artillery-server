@@ -126,3 +126,18 @@ above. Local QA preload fixtures are not production endpoints or shipped code.
 ### Lobby abuse controls
 
 Each trusted client identity may own at most `MAX_ACTIVE_ROOMS_PER_CLIENT` unfinished rooms. Lobby-only cleanup removes rooms after `LOBBY_INACTIVITY_MINUTES` without a meaningful lobby action and enforces `MAX_LOBBY_LIFETIME_MINUTES` as an absolute cap. Countdown, active, and finished games are excluded from this cleanup.
+## Session03: v2 first-contact parity
+
+`simulation/collision.js` is the pure server/browser collision contract (paired
+with the identical frontend module). Vehicle contact is a swept radius51 circle
+centred at spawnY-10. Terrain and vehicles compete inside the same segment.
+Physical collision steps are independent of cinematic time stretching; the
+existing minimum flight pacing is applied only after the definitive contact.
+All v2 designators, including Air Strike's zone, use this contract. Session02's
+impact/damage/cut resolver remains the sole authority.
+
+Crater queries use pixel centres in both runtimes. Artwork and world projection
+are unchanged; visual antialiasing may differ within one bitmap pixel.
+Run `npm run check`, including `test/composed-v2-collision.test.js` against the
+actual Phase11 entrypoint. Pair with the Session03 frontend PR.
+

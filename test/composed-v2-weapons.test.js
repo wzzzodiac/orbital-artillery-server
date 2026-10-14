@@ -41,7 +41,7 @@ function validateCuts(room,q) {
 }
 
 test('CSW-04 composed: child geometry originates at the corrected bitmap parent, not legacy X=1714', () => fixture('cluster', (room, q) => {
-  assert.ok(Math.abs(q.impactX - 3824.774) < 1, 'reproduce the audited final parent');
+  assert.ok(Math.abs(q.impactX - 3824.774) < 4, 'audited contact within one bitmap pixel after shared physical-step correction');
   assert.ok(isHuancavelicaV2Solid(room, q.impactX, q.impactY));
   assert.equal(q.clusterImpacts.length, 5);
   assert.ok(q.clusterImpacts.every(child => Math.abs(child.x - q.impactX) < 700), 'children must not stay 2110 units away');
@@ -49,7 +49,7 @@ test('CSW-04 composed: child geometry originates at the corrected bitmap parent,
 
 test('CSW-05 composed: final Nuke target in solid rock is actually removed', () => fixture('nuke', (room, q) => {
   const {impactX:x, impactY:y} = q;
-  assert.ok(Math.abs(x - 3824.774) < 1 && isHuancavelicaV2Solid(room,x,y));
+  assert.ok(Math.abs(x - 3824.774) < 4 && isHuancavelicaV2Solid(room,x,y));
   advance(room, q.beamAt);
   assert.ok(room.arena.craters.length > 0, 'beam creates bitmap cuts at its final geometry');
   assert.equal(isHuancavelicaV2Solid(room,x,y), false, 'contact rock must not remain solid');
@@ -57,7 +57,8 @@ test('CSW-05 composed: final Nuke target in solid rock is actually removed', () 
 
 test('CSW-06 composed: central Air Strike shell cuts its upper contact, never the legacy parent island', () => fixture('airstrike', (room, q) => {
   const shell = q.airStrikeShells[3];
-  assert.ok(Math.abs(shell.y - 511.05) < 1, 'reproduce audited upper-island shell');
+  assert.equal(shell.x,q.targetX,'zone follows the definitive designator, not legacy X=1714');
+  assert.ok(Math.abs(shell.y - 861.56) < 4, 'first upper contact in the corrected target column');
   const until = shell.impactAt + 10_000;
   for (let time = q.warningUntil; time <= until && !shell.applied; time += 50) advance(room,time);
   const crater = room.arena.craters.find(c => c.id === `${q.id}-air-${shell.index}` || c.impactId === shell.id);
@@ -221,7 +222,8 @@ test('composed Cluster: nearby live target takes child damage at real current co
   complete(room);validateCuts(room,q);
   const childDamage=q.impacts.slice(1).flatMap(e=>e.damageResults).filter(d=>d.playerId==='a');
   assert.ok(childDamage.length>0,'real child contact affects nearby player');
-  assert.equal(publicRoomState9(room).matchStats.find(s=>s.playerId==='a').damageReceived,childDamage.reduce((n,d)=>n+d.damage,0));
+  const allDamage=q.impacts.flatMap(e=>e.damageResults).filter(d=>d.playerId==='a');
+  assert.equal(publicRoomState9(room).matchStats.find(s=>s.playerId==='a').damageReceived,allDamage.reduce((n,d)=>n+d.damage,0));
 },{setup:room=>{
   const x=730*scale,y=findHuancavelicaV2SurfaceBelow(room,x,786*scale-40);
   room.players[1].spawn={x,y:y-8,facing:-1};setAim9('b',85,10);
