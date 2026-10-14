@@ -1,6 +1,7 @@
 import { findRoomBySocket, getRoom, createPublicStateView } from './rooms.js';
 import { V2_SPAWN_HINTS as SPAWN_IMAGE_HINTS, v2SpawnAtHint as spawnAtHint, isV2Room as isV2, installV2ArenaMetadata } from './huancavelica-v2-state.js';
 import { usesV2CombatResolver, advanceV2Combat, prepareV2Weapon } from './huancavelica-v2-combat.js';
+import {projectileMuzzle,traceFlight} from './simulation/collision.js';
 import {
   advanceTurnIfDue9 as baseAdvance,
   disconnectPlayer9,
@@ -29,7 +30,7 @@ import {
   HUANCAVELICA_V2_WORLD_WIDTH,
   findHuancavelicaV2SurfaceBelow,
   findHuancavelicaV2SurfaceNear,
-  firstHuancavelicaV2ProjectileImpact,
+  firstHuancavelicaV2SolidOnSegment,
   huancavelicaV2JumpPathClear,
   huancavelicaV2LandingHasRun,
   huancavelicaV2SurfaceCandidatesBelow,
@@ -110,24 +111,34 @@ function jumpOnV2(id,direction){
 }
 
 function ensureMuzzleOutside(room,shot){
-  if(!shot)return false;let x=Number(shot.startX),y=Number(shot.startY);if(!isHuancavelicaV2Solid(room,x,y))return false;const length=Math.max(1,Math.hypot(Number(shot.vx??0),Number(shot.vy??0))),dx=Number(shot.vx??0)/length,dy=Number(shot.vy??0)/length;
-  for(let distance=4;distance<=96;distance+=4){const nx=x+dx*distance,ny=y+dy*distance;if(!isHuancavelicaV2Solid(room,nx,ny)){shot.startX=nx;shot.startY=ny;return true;}}
-  return false;
-}
-
-function applyImpact(shot,impact){
-  if(!shot||!impact)return false;const candidateAt=Number(shot.startedAt)+Math.round(impact.t*1000);if(shot.impactReason==='player'&&Number(shot.impactAt)<=candidateAt)return false;shot.impactReason='terrain';shot.hitPlayerId=null;shot.impactX=impact.x;shot.impactY=impact.y;shot.durationMs=Math.max(220,Math.round(impact.t*1000));shot.impactAt=Number(shot.startedAt)+shot.durationMs;return true;
+  if(!shot)return false;const next=projectileMuzzle(shot,(x,y)=>isHuancavelicaV2Solid(room,x,y));
+  const changed=next.startX!==shot.startX||next.startY!==shot.startY;Object.assign(shot,next);return changed;
 }
 
 function adjustProjectile(room,q){
-  if(!q)return false;let changed=false;
-  if(q.weaponType==='airstrike'){for(const shell of q.airStrikeShells??[]){const surface=findHuancavelicaV2SurfaceBelow(room,Number(shell.x),0,HUANCAVELICA_V2_WORLD_HEIGHT);if(surface!=null){shell.y=surface;changed=true;}}return changed;}
-  const shots=q.weaponType==='triple'&&Array.isArray(q.volley)?q.volley:[q];for(const shot of shots){ensureMuzzleOutside(room,shot);const impact=firstHuancavelicaV2ProjectileImpact(room,shot);if(impact)changed=applyImpact(shot,impact)||changed;}
-  if(q.weaponType==='triple'){q.specialResolveAt=Math.max(...q.volley.map(shot=>Number(shot.impactAt??0)));q.resolveAt=q.specialResolveAt+900;return changed;}
-  if(q.weaponType==='cluster'){q.clusterImpacts=(q.clusterImpacts??[]).map((child,index)=>{const x=clamp(Number(child.x),0,HUANCAVELICA_V2_WORLD_WIDTH),surface=findHuancavelicaV2SurfaceBelow(room,x,0,HUANCAVELICA_V2_WORLD_HEIGHT);return{...child,x,y:surface??HUANCAVELICA_V2_WORLD_HEIGHT,visualStartAt:q.impactAt+667+index*167,impactAt:q.impactAt+667+index*167+1333};});q.specialResolveAt=Math.max(q.impactAt,...q.clusterImpacts.map(entry=>entry.impactAt));q.resolveAt=q.specialResolveAt+900;}
-  else if(q.weaponType==='nuke'&&changed){q.targetX=q.impactX;q.targetY=q.impactY;if(q.nukeBeam)q.nukeBeam={...q.nukeBeam,bx:q.impactX,by:q.impactY};q.targetLockedAt=q.impactAt;q.warningUntil=q.impactAt+5000;q.beamAt=q.warningUntil;q.beamUntil=q.beamAt+5000;q.resolveAt=q.beamUntil+1500;}
-  else if(changed)q.resolveAt=Math.max(Number(q.resolveAt??0),q.impactAt+900);return changed;
+  if(!q)return false;
+  const shots=q.weaponType==='triple'&&Array.isArray(q.volley)?q.volley:[q];
+  for(const shot of shots){
+    const physicalSpeed=320+Number(shot.power??q.power??55)*9;
+    const oldScale=physicalSpeed/Math.max(.001,Math.hypot(shot.vx,shot.vy));
+    shot.vx*=oldScale;shot.vy*=oldScale;shot.gravity*=oldScale**2;shot.windAccel*=oldScale**2;
+    shot.collisionTimeScale=1;
+    Object.assign(shot,projectileMuzzle(shot,(x,y)=>isHuancavelicaV2Solid(room,x,y)));
+    const hit=traceFlight(shot,{players:room.players,ownerId:q.ownerPlayerId,firstSolid:(a,b)=>firstHuancavelicaV2SolidOnSegment(room,a,b)});
+    // Preserve the existing minimum visible duration without moving the contact.
+    const minimumMs=(q.weaponType??'basic')==='basic'?4000:4667;
+    const stretch=hit.seconds>0?Math.max(1,minimumMs/(hit.seconds*1000)):1;
+    shot.vx/=stretch;shot.vy/=stretch;shot.gravity/=stretch**2;shot.windAccel/=stretch**2;shot.collisionTimeScale*=stretch;
+    Object.assign(shot,{impactX:hit.x,impactY:hit.y,impactReason:hit.type,hitPlayerId:hit.targetPlayerId,
+      durationMs:Math.max(0,hit.seconds*stretch*1000),impactAt:shot.startedAt+Math.max(0,hit.seconds*stretch*1000)});
+  }
+  if(q.weaponType==='triple'){
+    const middle=q.volley[1];for(const key of ['startX','startY','vx','vy','gravity','windAccel','collisionTimeScale','impactX','impactY','impactAt','durationMs','impactReason','hitPlayerId'])q[key]=middle[key];
+    q.specialResolveAt=Math.max(...q.volley.map(s=>s.impactAt));q.resolveAt=q.specialResolveAt+900;
+  }else q.resolveAt=q.impactAt+900;
+  room.match.turnEndsAt=q.resolveAt;return true;
 }
+
 
 function projectileCraterHints(q){
   if(!q)return[];const entries=[q,...(q.volley??[]),...(q.clusterImpacts??[]),...(q.airStrikeShells??[])];return entries.map(entry=>({x:Number(entry.x??entry.impactX),y:Number(entry.y??entry.impactY)})).filter(entry=>Number.isFinite(entry.x)&&Number.isFinite(entry.y));
@@ -148,9 +159,9 @@ function fireOnV2(id){
     installV2Arena(result.room);
     const q=result.room.match?.projectile;
     if(q){
-      // Session01 ballistic behavior is unchanged. Multi-impact weapons own
-      // their final geometry; discard legacy subimpact forecasts entirely.
-      if(['basic','heavy'].includes(q.weaponType??'basic'))adjustProjectile(result.room,q);
+      // Reconcile every designator with the shared collision contract before
+      // the Session02 impact resolver constructs its definitive events.
+      adjustProjectile(result.room,q);
       prepareV2Weapon(result.room,q);
     }
   }

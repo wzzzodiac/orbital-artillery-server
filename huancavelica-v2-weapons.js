@@ -1,4 +1,5 @@
 import { firstHuancavelicaV2SolidOnSegment, HUANCAVELICA_V2_WORLD_HEIGHT as height, HUANCAVELICA_V2_WORLD_WIDTH as width } from './huancavelica-v2-bitmap.js';
+import {traceFlight} from './simulation/collision.js';
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const rules = Object.freeze({
@@ -13,51 +14,14 @@ export function weaponPoint(shot, seconds) {
   return { x: shot.startX + (shot.vx ?? 0) * seconds + .5 * (shot.windAccel ?? 0) * seconds ** 2,
     y: shot.startY + (shot.vy ?? 0) * seconds + .5 * (shot.gravity ?? 0) * seconds ** 2 };
 }
-function playerContact(room, from, to, owner, seconds, ignoreOwnerUntil) {
-  let first = null;
-  for (const p of room.players) {
-    if (!p.spawn || p.alive === false || (p.id === owner && seconds < ignoreOwnerUntil)) continue;
-    const dx = to.x - from.x, dy = to.y - from.y, ox = from.x - p.spawn.x, oy = from.y - (p.spawn.y - 10);
-    const a = dx * dx + dy * dy, b = 2 * (ox * dx + oy * dy), c = ox * ox + oy * oy - 51 ** 2;
-    const discriminant = b * b - 4 * a * c;
-    const t = c <= 0 ? 0 : a > 0 && discriminant >= 0 ? (-b - Math.sqrt(discriminant)) / (2 * a) : Infinity;
-    if (t >= 0 && t <= 1 && (!first || t < first.t)) first = { t, targetPlayerId: p.id };
-  }
-  return first;
-}
 // A forecast is for presentation only until resolved. Reforecast remaining
 // flights after each cut, in time order, against the CURRENT mask and players.
 function forecast(room, q, event) {
   if (!event.flight || event.resolved) return;
-  const shot = event.flight, start = Math.max(.08, ((q.contactsThroughAt ?? shot.startedAt) - shot.startedAt) / 1000);
-  // Cinematic pacing can leave the muzzle inside the owner's radius after
-  // .14s. Ignore that initial overlap until it exits; a real return can hit it.
-  if(shot.ignoreOwnerUntil==null){
-    shot.ignoreOwnerUntil=.14;
-    const owner=room.players.find(p=>p.id===q.ownerPlayerId);
-    if(owner?.spawn){
-      for(let t=0;t<=8;t+=.02){const p=weaponPoint(shot,t);
-        if(Math.hypot(p.x-owner.spawn.x,p.y-(owner.spawn.y-10))>51){shot.ignoreOwnerUntil=Math.max(.14,t);break;}
-        shot.ignoreOwnerUntil=8.1;
-      }
-    }
-  }
-  let previous = weaponPoint(shot, start);
-  for (let t = start + .02; t <= 8.02; t += .02) {
-    const point = weaponPoint(shot, t), terrain = firstHuancavelicaV2SolidOnSegment(room, previous, point);
-    const player = playerContact(room, previous, point, q.ownerPlayerId, t, shot.ignoreOwnerUntil);
-    const hit = player && (!terrain || player.t < terrain.t) ? { ...player, type: 'player' } : terrain ? { ...terrain, type: 'terrain' } : null;
-    if (hit) {
-      const seconds = t - .02 + .02 * hit.t;
-      Object.assign(event, { x: previous.x + (point.x - previous.x) * hit.t, y: previous.y + (point.y - previous.y) * hit.t,
-        impactAt: shot.startedAt + seconds * 1000, contactType: hit.type, targetPlayerId: hit.targetPlayerId ?? null });
-      break;
-    }
-    if (point.x < 0 || point.x > width || point.y > height + 120 || t >= 8) {
-      Object.assign(event, { ...point, impactAt: shot.startedAt + t * 1000, contactType: 'out_of_bounds', targetPlayerId: null }); break;
-    }
-    previous = point;
-  }
+  const hit=traceFlight(event.flight,{players:room.players,ownerId:q.ownerPlayerId,
+    firstSolid:(a,b)=>firstHuancavelicaV2SolidOnSegment(room,a,b),width,height,
+    fromSeconds:Math.max(0,((q.contactsThroughAt??event.flight.startedAt)-event.flight.startedAt)/1000)});
+  Object.assign(event,{x:hit.x,y:hit.y,impactAt:event.flight.startedAt+hit.seconds*1000,contactType:hit.type,targetPlayerId:hit.targetPlayerId});
   syncPresentation(event);
 }
 function syncPresentation(event) {
@@ -95,12 +59,14 @@ export function prepareV2Weapon(room, q) {
   } else if (q.weaponType === 'cluster') {
     q.impacts.push(contact(q, 'parent', rules.cluster, { x: q.impactX, y: q.impactY, impactAt: q.impactAt,
       contactType: q.impactReason, targetPlayerId: q.hitPlayerId },{
-      startX:q.startX,startY:q.startY,vx:q.vx,vy:q.vy,gravity:q.gravity,windAccel:q.windAccel,startedAt:q.startedAt}));
+      startX:q.startX,startY:q.startY,vx:q.vx,vy:q.vy,gravity:q.gravity,windAccel:q.windAccel,startedAt:q.startedAt,collisionTimeScale:q.collisionTimeScale}));
     // Fixed launch spread and nominal 1333ms return arc, from the FINAL parent.
     // A side hit starts just outside the rock along the incoming normal.
     q.clusterImpacts = ['terrain', 'player'].includes(q.impactReason) ? [-180,-90,0,90,180].map((dx,index)=>clusterLaunch(q,dx,index)) : [];
     q.impacts.push(...q.clusterImpacts.map((shot, i) => contact(q, `cluster-${i}`, rules.child, {}, shot)));
   } else if (q.weaponType === 'airstrike') {
+    q.targetX=clamp(q.impactX,40,width-40);
+    for(const shell of q.airStrikeShells)shell.x=clamp(q.targetX+(shell.index-3)*105,35,width-35);
     q.impacts = q.airStrikeShells.map((shell, i) => {
       // Keep 4s fall + 233ms stagger. Empty columns exit the arena, not fake rock.
       const hit = firstHuancavelicaV2SolidOnSegment(room, {x:shell.x,y:0}, {x:shell.x,y:height});
