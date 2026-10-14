@@ -159,3 +159,18 @@ This is bounded recovery, not a deterministic wall-clock catch-up guarantee.
 feet sweeps, void death, command lockouts and timeout settlement. Legacy-map
 physics, weapon balance, artwork, origin admission and rate limits are unchanged.
 
+## Session05: shared pure simulation
+
+`simulation/` contains the actual bitmap, airborne, projectile, weapon and damage
+rules used by the Phase11 Node adapters and distributed identically to the
+browser. Factories accept mask bits and explicit match/telemetry policies; the
+core has no filesystem, DOM, network, ambient clock or random calls. Inventory
+touch/utility rules and weighted item choice are shared with online adapters.
+Legacy rooms, admission and authority stay on the server.
+
+`npm run check` includes final Node-adapter vs standalone-core commands/ticks for
+all six weapons and movement. `test/core-scenario.js` replays seed12345 and fixed
+ticks, including Shield, Heal, pickup touch and cuts. The paired browser harness
+compares canonical output (1e-6 world tolerance) with this Node baseline; paired
+shared-source files must be kept byte-identical. No new runtime dependencies.
+

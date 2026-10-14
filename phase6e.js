@@ -1,5 +1,6 @@
 import { isPublicStateView } from './rooms.js';
 import { randomInt } from 'node:crypto';
+import {chooseItem} from './simulation/rules.js';
 import {
   advanceTurnIfDue6DV09 as baseAdvance,
   fireProjectile6DV09 as baseFire,
@@ -22,14 +23,7 @@ export const PHASE6E_ITEM_POOL = Object.freeze([
 export const PHASE6E_POOL_TOTAL = PHASE6E_ITEM_POOL.reduce((sum,item)=>sum+item.weight,0);
 
 export function chooseBalancedItem6E(rawRoll){
-  const roll=Number(rawRoll);
-  if(!Number.isInteger(roll)||roll<0||roll>=PHASE6E_POOL_TOTAL)throw new RangeError(`roll must be an integer from 0 to ${PHASE6E_POOL_TOTAL-1}`);
-  let cursor=roll;
-  for(const item of PHASE6E_ITEM_POOL){
-    if(cursor<item.weight)return item;
-    cursor-=item.weight;
-  }
-  return PHASE6E_ITEM_POOL[0];
+  return chooseItem(Number(rawRoll));
 }
 
 function rebalanceNewPickup(room){
