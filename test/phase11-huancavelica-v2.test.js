@@ -32,7 +32,8 @@ import {
   worldToHuancavelicaV2Image
 } from '../huancavelica-v2-bitmap.js';
 
-const { installV2Arena, landingAt, settleUnsupported }=phase11HuancavelicaV2TestHooks;
+import {advanceV2AirbornePlayer,startV2Airborne,V2_AIR_PHYSICS} from '../huancavelica-v2-airborne.js';
+const { installV2Arena, settleUnsupported }=phase11HuancavelicaV2TestHooks;
 const imagePoint=(x,y)=>huancavelicaV2ImageToWorld(x,y);
 const bareRoom=(craters=[])=>({arena:{craters}});
 
@@ -133,14 +134,19 @@ test('spectator cannot move or jump during another player turn',()=>{
   const room=startedV2(),spectator=room.players.find(player=>player.id!==room.match.activePlayerId);assert.equal(moveActivePlayer11(spectator.id,1).error,'not_your_turn');assert.equal(jumpActivePlayer11(spectator.id,1).error,'not_your_turn');
 });
 
-test('normal bitmap jumps climb the authored stepping chain to the top island',()=>{
-  const room=bareRoom(),startX=imagePoint(650,0).x,startSurface=findHuancavelicaV2SurfaceBelow(room,startX,imagePoint(0,430).y,160),route=[[1,180],[-1,180],[-1,180],[-1,240],[1,225]];let from={x:startX,y:startSurface-8};
-  for(const[direction,distance]of route){const landing=landingAt(room,from,direction,distance);assert.ok(landing,`missing landing from ${JSON.stringify(from)} dir=${direction} distance=${distance}`);from={x:landing.x,y:landing.y};}
-  assert.ok(worldToHuancavelicaV2Image(0,from.y+8).y<100,'route must reach the authored upper crown');
+test('SPACE starts authoritative vertical velocity without choosing a landing',()=>{
+  const room=startedV2(),id=room.match.activePlayerId,p=room.players.find(p=>p.id===id),from={...p.spawn};
+  assert.equal(jumpActivePlayer11(id).ok,true);assert.deepEqual(p.spawn,from);
+  assert.equal(p.airborne.vy,-V2_AIR_PHYSICS.jumpImpulse);assert.equal(p.motion,null);
+  assert.equal(jumpActivePlayer11(id).error,'already_airborne');
 });
 
-test('jump path rejects an island side/underside instead of phasing through it',()=>{
-  const room=bareRoom(),from={...imagePoint(500,360)};from.y-=8;const blocked=landingAt(room,from,1,420);assert.equal(blocked,null);
+test('physical head sweep stops below an island underside instead of phasing through it',()=>{
+  const room=bareRoom(),x=imagePoint(730,0).x,surface=findHuancavelicaV2SurfaceBelow(room,x,imagePoint(0,760).y),p={spawn:{x,y:surface-8,facing:1},hp:100,alive:true};
+  startV2Airborne(p,1000,{jump:true});let minimumHead=Infinity;
+  for(let i=1;i<=160&&p.airborne;i++){advanceV2AirbornePlayer(room,p,1000+i*20);minimumHead=Math.min(minimumHead,p.spawn.y+V2_AIR_PHYSICS.bodyTop);assert.equal(isHuancavelicaV2Solid(room,x,p.spawn.y+V2_AIR_PHYSICS.bodyTop),false);}
+  assert.ok(worldToHuancavelicaV2Image(0,minimumHead).y>630);
+  assert.equal(p.airborne,null);assert.equal(p.alive,true);
 });
 
 test('active v2 player can fire BASIC without changing aim, power, wind or gravity',()=>{
@@ -158,7 +164,7 @@ test('crater replay clears the same circular terrain pixels for live rooms and l
 });
 
 test('destroying support makes a surviving player fall to the next bitmap surface',()=>{
-  const x=imagePoint(720,0).x,top=findHuancavelicaV2SurfaceBelow(bareRoom(),x,0,1000),room={mode:'survival',status:'started',players:[{id:'a',hp:100,alive:true,spawn:{x,y:top-8,facing:1}},{id:'b',hp:100,alive:true,spawn:{x:imagePoint(1100,0).x,y:imagePoint(0,380).y-8,facing:-1}}],arena:{craters:[{id:'hole',x,y:top,radius:180}]},match:{turnEndsAt:Date.now()+30000}};const before=new Map([['a',{alive:true,hp:100,spawn:{...room.players[0].spawn}}]]);settleUnsupported(room,before);assert.equal(room.players[0].motion?.type,'fall');assert.ok(room.players[0].spawn.y>top);
+  const x=imagePoint(720,0).x,top=findHuancavelicaV2SurfaceBelow(bareRoom(),x,0,1000),room={mode:'survival',status:'started',players:[{id:'a',hp:100,alive:true,spawn:{x,y:top-8,facing:1}},{id:'b',hp:100,alive:true,spawn:{x:imagePoint(1100,0).x,y:imagePoint(0,380).y-8,facing:-1}}],arena:{craters:[{id:'hole',x,y:top,radius:180}]},match:{turnEndsAt:Date.now()+30000}};const before=new Map([['a',{alive:true,hp:100,spawn:{...room.players[0].spawn}}]]);settleUnsupported(room,before);const p=room.players[0],from=p.spawn.y;assert.equal(p.airborne?.reason,'support_loss');assert.equal(p.motion,null);assert.equal(p.spawn.y,from);const start=p.airborne.updatedAt;for(let i=1;i<=200&&p.airborne;i++)advanceV2AirbornePlayer(room,p,start+i*20);assert.ok(p.spawn.y>top);assert.equal(p.airborne,null);assert.equal(p.alive,true);
 });
 
 test('other maps and Huancavelica v1 keep their existing collision models',()=>{

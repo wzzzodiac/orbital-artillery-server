@@ -1,5 +1,6 @@
 import { beginTurn, finishMatch, resultFor, COMBAT_MOTION_RULES as motion } from './rooms.js';
 import { V09_BALLISTIC_BALANCE } from './phase6d-v09.js';
+import {startV2Airborne,v2GroundSurface} from './huancavelica-v2-airborne.js';
 import { snapshotCombatState, recordCombatEvents } from './phase7a1.js';
 import { usesV2MultiImpact, prepareV2Weapon, refreshV2Weapon, applyV2WeaponImpact } from './huancavelica-v2-weapons.js';
 export { prepareV2Weapon };
@@ -12,54 +13,19 @@ const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const voidY = height + 120;
 export const usesV2CombatResolver = q => Boolean(q && (['basic', 'heavy'].includes(q.weaponType ?? 'basic') || usesV2MultiImpact(q)));
 
-function fallTo(room, player, surface, now) {
-  const from = { ...player.spawn }, voided = surface == null;
-  const targetY = voided ? voidY : Math.round(surface - motion.groundOffset);
-  if (!voided && targetY <= from.y + 2) return 0;
-  const endsAt = now + (voided ? motion.fallMs : Math.min(motion.fallMs, 900));
-  player.spawn = { ...from, y: targetY };
-  player.motion = { type: 'fall', startedAt: now, endsAt, fromX: from.x, fromY: from.y, toX: from.x, toY: targetY, apex: 0, bitmapSupportLost: true };
-  if (voided) { player.hp = 0; player.alive = false; }
-  return endsAt;
+function fallTo(room,player,surface,now){
+  if(player.alive===false||player.airborne||v2GroundSurface(room,player.spawn)!=null)return 0;
+  startV2Airborne(player,now,{reason:'support_loss'});return now+50;
 }
-
-// Same combat knockback coefficients as the existing game, but contact and
-// landing query the v2 bitmap, never the islands heightfield. This is not the
-// separate free-air movement/jump rework.
-function knockback(room, player, q, distance, now) {
-  if (q.hitPlayerId === player.id) return 0;
-  const strength = clamp(1 - distance / motion.radius, 0, 1);
-  if (strength < motion.minStrength) return 0;
-  const from = { ...player.spawn };
-  let dx = from.x - q.impactX, dy = from.y - 10 - q.impactY;
-  let length = Math.hypot(dx, dy);
-  if (length < 1) { dx = from.facing || 1; dy = -.25; length = Math.hypot(dx, dy); }
-  const speed = 150 + (motion.maxSpeed - 150) * strength;
-  const vx = dx / length * speed, vy = dy / length * speed - motion.liftBias * strength;
-  let previous = from, target = from, seconds = .25;
-  for (let t = motion.dt; t <= motion.maxSeconds; t += motion.dt) {
-    const point = { x: clamp(from.x + vx * t, 20, width - 20), y: from.y + vy * t + .5 * motion.gravity * t * t };
-    seconds = t;
-    const descending = vy + motion.gravity * t >= 0;
-    const hit = t > .08 ? firstHuancavelicaV2SolidOnSegment(room,
-      { x: previous.x, y: previous.y + motion.groundOffset },
-      { x: point.x, y: point.y + motion.groundOffset }) : null;
-    if (hit) {
-      const surface = descending ? findHuancavelicaV2SurfaceBelow(room, hit.x, Math.max(0, hit.y - 7), 14) : null;
-      target = surface == null ? previous : { x: hit.x, y: surface - motion.groundOffset };
-      break;
-    }
-    target = point; previous = point;
-    if (point.y >= voidY) break;
-  }
-  const surface = findHuancavelicaV2SurfaceBelow(room, target.x, Math.max(0, target.y + motion.groundOffset - 3), height);
-  const voided = surface == null;
-  target = { x: Math.round(target.x), y: voided ? voidY : Math.round(surface - motion.groundOffset) };
-  const endsAt = now + Math.max(260, Math.round(seconds * 1000));
-  player.spawn = { ...target, facing: vx < -1 ? -1 : vx > 1 ? 1 : from.facing || 1 };
-  player.motion = { type: voided ? 'knockbackVoid' : 'knockback', startedAt: now, endsAt, fromX: from.x, fromY: from.y, toX: target.x, toY: target.y, vx, vy, gravity: motion.gravity, strength };
-  if (voided) { player.hp = 0; player.alive = false; }
-  return endsAt;
+function knockback(room,player,q,distance,now){
+  if(q.hitPlayerId===player.id)return 0;
+  const strength=clamp(1-distance/motion.radius,0,1);if(strength<motion.minStrength)return 0;
+  let dx=player.spawn.x-q.impactX,dy=player.spawn.y-10-q.impactY,length=Math.hypot(dx,dy);
+  if(length<1){dx=player.spawn.facing||1;dy=-.25;length=Math.hypot(dx,dy);}
+  const speed=150+(motion.maxSpeed-150)*strength;
+  startV2Airborne(player,now,{reason:'knockback'});
+  player.airborne.vx=dx/length*speed;player.airborne.vy=dy/length*speed-motion.liftBias*strength;
+  player.airborne.input=0;player.spawn.facing=player.airborne.vx<0?-1:1;return now+50;
 }
 
 function resolveImpact(room, q, now) {
@@ -138,6 +104,7 @@ export function advanceV2Combat(room, now) {
     changed = true;
   }
   if (now < q.resolveAt) return changed ? room : null;
+  if(room.players.some(p=>p.alive!==false&&p.airborne)){q.resolveAt=now+50;room.match.turnEndsAt=q.resolveAt;return room;}
   const result = resultFor(room); // Never trust a stale cached candidate.
   room.match.pendingResult = null;
   room.match.shotResolvedAt = now;

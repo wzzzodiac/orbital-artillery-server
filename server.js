@@ -24,7 +24,8 @@ import {
   rematchRoom9,
   selectItem9,
   setAim9,
-  setTerrain9
+  setTerrain9,
+  setAirInput11
 } from './phase11-huancavelica-v2.js';
 import {
   ensureAfkVoteState,
@@ -89,7 +90,7 @@ setInterval(() => {
     }
     if (changed) emitRoomState(changed);
   }
-}, 250).unref();
+}, 50).unref();
 
 io.on('connection', socket => {
   socket.data.clientIdentity = clientIpFromRequest(socket.request, CONFIG.trustedProxyHops);
@@ -124,6 +125,7 @@ io.on('connection', socket => {
   onClientEvent(socket, 'rematch_game', (payload, reply = () => {}) => { if (!allowRoomAction()) return reply({ ok: false, error: 'room_action_rate_limited' }); replyMutation(rematchRoom9(socket.id, { randomMap: Boolean(payload?.randomMap) }), reply); });
   onClientEvent(socket, 'move_player', (payload, reply = () => {}) => replyTurnAction(moveActivePlayer9(socket.id, payload?.direction), reply));
   onClientEvent(socket, 'jump_player', (payload, reply = () => {}) => replyTurnAction(jumpActivePlayer9(socket.id, payload?.direction), reply));
+  onClientEvent(socket, 'air_input', (payload, reply = () => {}) => replyTurnAction(setAirInput11(socket.id,payload.direction),reply));
   onClientEvent(socket, 'set_aim', (payload, reply = () => {}) => replyTurnAction(setAim9(socket.id, payload?.angle, payload?.power), reply));
   onClientEvent(socket, 'select_item', (payload, reply = () => {}) => replyTurnAction(selectItem9(socket.id, payload?.slot), reply));
   onClientEvent(socket, 'fire_projectile', (_payload, reply = () => {}) => replyTurnAction(fireProjectile9(socket.id), reply));

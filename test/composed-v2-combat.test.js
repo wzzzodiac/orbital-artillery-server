@@ -4,7 +4,7 @@ import { createRoom, joinRoom, setGameMode, setPlayerReady, startRoom, activateR
 // These are the composed exports imported by server.js, not an older phase.
 import {
   setTerrain9, publicRoomState9, fireProjectile9, advanceTurnIfDue9,
-  moveActivePlayer9, disconnectPlayer9, rematchRoom9, selectItem9, setAim9
+  moveActivePlayer9, jumpActivePlayer9, disconnectPlayer9, rematchRoom9, selectItem9, setAim9
 } from '../phase11-huancavelica-v2.js';
 import { findHuancavelicaV2SurfaceBelow } from '../huancavelica-v2-bitmap.js';
 
@@ -49,7 +49,7 @@ function complete(room) {
   return publicRoomState9(room);
 }
 function playerState(room) {
-  return structuredClone(room.players.map(p => ({ id: p.id, spawn: p.spawn, motion: p.motion, hp: p.hp, alive: p.alive })));
+  return structuredClone(room.players.map(p => ({ id: p.id, spawn: p.spawn, motion: p.motion,airborne:p.airborne, hp: p.hp, alive: p.alive })));
 }
 
 for (const mode of ['team', 'survival']) for (const weapon of ['basic', 'heavy']) {
@@ -77,9 +77,10 @@ test('composed v2 disconnect and repeated serialization preserve survivor state 
   room.match.activePlayerId = 'a';
   room.match.turnIndex = room.match.turnOrder.indexOf('a');
   assert.equal(moveActivePlayer9('a', 1).ok, true);
+  assert.equal(jumpActivePlayer9('a').ok,true);
   room.players[0].hp = 73;
   const before = playerState(room).filter(p => p.id !== 'c');
-  assert.ok(before[0].motion);
+  assert.ok(before[0].airborne);assert.equal(before[0].motion,null);
   assert.equal(disconnectPlayer9('c').deleted, false);
   for (let read = 0; read < 4; read++) publicRoomState9(room);
   assert.deepEqual(playerState(room), before);
@@ -211,11 +212,13 @@ test('composed v2 knockback lands on bitmap support instead of a legacy void', (
   q.impactReason = 'terrain'; q.hitPlayerId = null;
   clock = q.impactAt; advanceTurnIfDue9(room.code, clock);
   assert.equal(target.alive, true);
-  assert.equal(target.motion?.type, 'knockback');
-  assert.ok(findHuancavelicaV2SurfaceBelow(room, target.spawn.x, target.spawn.y, 32) != null);
+  assert.equal(target.airborne?.reason, 'knockback');
+  assert.equal(target.motion,null,'knockback has velocity, never a preselected landing');
   const state = complete(room);
   assert.ok(state.matchStats.every(s => s.deaths === 0));
   assert.equal(state.match.result, null);
+  assert.equal(target.airborne,null,'actual physical landing completes before rotation');
+  assert.ok(findHuancavelicaV2SurfaceBelow(room, target.spawn.x, target.spawn.y, 64) != null);
 }));
 
 for (const map of ['rolling','terraces','twinpeaks','basin','brokenridge','islands','canyon']) {

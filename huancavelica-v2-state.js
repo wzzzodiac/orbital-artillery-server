@@ -33,6 +33,7 @@ export function initializeV2Spawns(room) {
     const hint = V2_SPAWN_HINTS[index % V2_SPAWN_HINTS.length];
     player.spawn = v2SpawnAtHint(room, hint, index);
     player.motion = null;
+    player.airborne=null;player.v2HorizontalInput=0;
     player.phase11SpawnHint = hint.label;
   });
   room.phase11SpawnKey = room.match.countdownStartedAt;
