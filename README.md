@@ -80,6 +80,42 @@ two survivors' match. No production deployment is required.
 
 GitHub CI validates repository code/tests but does not itself prove that Google Cloud Run currently serves the exact latest backend commit. Runtime deployment parity is checked separately when needed.
 
+### Session 02: definitive v2 weapon contacts
+
+`huancavelica-v2-combat.js` also owns Triple, Cluster, Air Strike and Nuke
+resolution on v2; legacy maps retain their existing resolvers. The small
+`huancavelica-v2-weapons.js` module creates `projectile.impacts`. Every contact
+has an `id`, `attackId`, `weaponType`, `ownerPlayerId`, `parentProjectileId`,
+`x/y`, `contactType`, `targetPlayerId`, `impactAt`, `damageRule`, `terrainCuts`,
+`damageResults` and an explicit `resolved` flag. Pending flights are forecasts;
+after every cut, unresolved flights are recomputed chronologically against the
+current bitmap and live players. Resolved contacts never move or replay.
+
+Cluster launches five real arcs from the final parent, with the existing
+-180/-90/0/90/180 spread, 667ms delay and 167ms stagger. Its 1333ms nominal
+return arc may contact side walls sooner or lower islands later. Air Strike
+retains seven shells, 4s nominal fall and 233ms stagger. Their transmitted
+flight coefficients drive the matching frontend presentation. Cuts and feed
+events carry the impact ID; no nearest-X crater association is used.
+
+Nuke rebuilds both diagonal endpoints around its definitive designator and
+retains 5s warning, 5s beam, 1.5s buffer, damage20, half-width115, radius118 scars
+and depth330 compatibility metadata. Scars are spaced at 45 units (half the
+old 90-unit surface-only step) to cover the complete beam width through bitmap
+rock. No heightfield surface lookup or knockback is used for this beam.
+
+Shield covers one complete attack with cumulative half-damage rounding, not
+one independently rounded/consumed Shield per child. Each impact records final
+damage/death telemetry before the next impact; results wait for the sequence
+and support animation, then recompute final survivors. Explosion collection
+remains disabled under the existing Phase9 rules; Nuke still destroys pickups.
+
+Run `node --test test/composed-v2-weapons.test.js` for the Session02 composed
+regressions, or `npm ci --ignore-scripts` then `npm run check` for the full gate.
+The first test commit intentionally fails CSW-04/05/06 on Session01 main.
+Serve the matching frontend review branch on port4173 using the local commands
+above. Local QA preload fixtures are not production endpoints or shipped code.
+
 ### Request admission and proxy trust
 
 - `CLIENT_ORIGINS` is a comma-separated list of exact browser origins. The production default is `https://wzzzodiac.github.io`; add an exact local-development origin when serving the frontend locally.
