@@ -126,6 +126,10 @@ above. Local QA preload fixtures are not production endpoints or shipped code.
 ### Lobby abuse controls
 
 Each trusted client identity may own at most `MAX_ACTIVE_ROOMS_PER_CLIENT` unfinished rooms. Lobby-only cleanup removes rooms after `LOBBY_INACTIVITY_MINUTES` without a meaningful lobby action and enforces `MAX_LOBBY_LIFETIME_MINUTES` as an absolute cap. Countdown, active, and finished games are excluded from this cleanup.
+Security hardening: all Engine.IO transports must join/create a room within 15 seconds, including transports that never open a namespace. The global transport cap is checked again after handshake; opening histories are bounded to 1024 identities. Unknown, malformed or rejected actions no longer renew the idle-socket clock. Active countdowns/matches retain their existing idle exemption and transport-recovery grace.
+
+Successful state mutations serialize once. ACK callers receive the complete unchanged state contract in the ACK; the matching `room_state` broadcast goes only to peers. Fire-and-forget callers still receive the broadcast, including the sender. The existing browser renders both paths; game rules, terrain and physics are unchanged.
+
 ## Session03: v2 first-contact parity
 
 `simulation/collision.js` is the pure server/browser collision contract (paired

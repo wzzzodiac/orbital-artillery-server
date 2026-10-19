@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { onClientEvent, isValidClientPayload } from '../client-events.js';
+import { onClientEvent, isValidClientPayload, replyRoomState } from '../client-events.js';
 import { normalizePlayerName, isValidRoomCode } from '../validation.js';
 import { createRoom, joinRoom, roomStore } from '../rooms.js';
 import { setTerrain9, publicRoomState9 } from '../phase10-huancavelica.js';
@@ -94,4 +94,37 @@ test('host can switch aliases and ready state resets on the same collision base'
   assert.equal(setTerrain9('host', 'random').ok, true);
   assert.equal(room.phase10TerrainAlias, null);
   roomStore.clear();
+});
+
+
+test('only successful validated actions renew the activity lease, also without ACK', async () => {
+  let listener, accepted = 0;
+  const socket = { on(_event, fn) { listener = fn; } };
+  const bind = handler => onClientEvent(socket, 'set_ready', handler, { onAccepted: () => accepted++ });
+  bind((_payload, reply) => reply({ ok: true }));
+  await listener({ ready: 'false' }, () => {});
+  assert.equal(accepted, 0);
+  bind((_payload, reply) => reply({ ok: false, error: 'not_in_room' }));
+  await listener({ ready: true }, () => {});
+  assert.equal(accepted, 0);
+  bind((_payload, reply) => { reply({ ok: true }); reply({ ok: true }); });
+  await listener({ ready: true }, () => {});
+  assert.equal(accepted, 1, 'one renewal per action');
+  await listener({ ready: false });
+  assert.equal(accepted, 2, 'fire-and-forget remains supported');
+});
+
+test('state ACK excludes sender from broadcast; absent or failed ACK includes sender', async () => {
+  for (const outcome of ['ack', 'none', 'throw']) {
+    let listener, target, broadcasts = 0, ackCount = 0;
+    const emitter = scope => ({ to(code) { assert.equal(code, 'TEST'); target = scope; return { emit(event, state) { assert.equal(event, 'room_state'); assert.deepEqual(state, { code: 'TEST' }); broadcasts++; } }; } });
+    const socket = { on(_event, fn) { listener = fn; }, ...emitter('peers') };
+    onClientEvent(socket, 'set_ready', (_payload, reply) => replyRoomState(socket, emitter('all'), 'TEST', { code: 'TEST' }, reply));
+    const args = [{ ready: true }];
+    if (outcome !== 'none') args.push(value => { ackCount++; if (outcome === 'throw') throw Error('closed'); assert.deepEqual(value, { ok: true, room: { code: 'TEST' } }); });
+    await listener(...args);
+    assert.equal(broadcasts, 1);
+    assert.equal(target, outcome === 'ack' ? 'peers' : 'all');
+    assert.equal(ackCount, outcome === 'none' ? 0 : 1);
+  }
 });
