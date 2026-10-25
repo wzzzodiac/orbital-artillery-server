@@ -1,7 +1,8 @@
 import {V09_BALLISTIC_BALANCE,COMBAT_MOTION_RULES as motion} from './rules.js';
-import {HUANCAVELICA_V2_WORLD_HEIGHT as height,HUANCAVELICA_V2_WORLD_WIDTH as width} from './terrain.js';
+import {HUANCAVELICA_V2_WORLD_HEIGHT as height,HUANCAVELICA_V2_WORLD_WIDTH as width} from './terrain.js?v=bitmap-maps-1';
 // Policy owns match rotation/results/telemetry; gameplay resolution is identical.
 export function createCombatResolver({terrain,physics,weapons,policy}){
+const width=terrain.geometry?.worldWidth??5000,height=terrain.geometry?.worldHeight??3750;
  const {findHuancavelicaV2SurfaceBelow,firstHuancavelicaV2SolidOnSegment}=terrain;
  const {startV2Airborne,v2GroundSurface}=physics;
  const {usesV2MultiImpact,prepareV2Weapon,refreshV2Weapon,applyV2WeaponImpact}=weapons;
@@ -11,11 +12,11 @@ const voidY = height + 120;
 const usesV2CombatResolver = q => Boolean(q && (['basic', 'heavy'].includes(q.weaponType ?? 'basic') || usesV2MultiImpact(q)));
 
 function fallTo(room,player,surface,now){
-  if(player.dummy||player.alive===false||player.airborne||v2GroundSurface(room,player.spawn)!=null)return 0;
+  if((player.dummy&&!player.dynamicBody)||(player.alive===false&&!player.dynamicBody)||player.outOfWorld||player.airborne||v2GroundSurface(room,player.spawn)!=null)return 0;
   startV2Airborne(player,now,{reason:'support_loss'});return now+50;
 }
 function knockback(room,player,q,distance,now){
-  if(player.dummy||q.hitPlayerId===player.id)return 0;
+  if((player.dummy&&!player.dynamicBody)||q.hitPlayerId===player.id)return 0;
   const strength=clamp(1-distance/motion.radius,0,1);if(strength<motion.minStrength)return 0;
   let dx=player.spawn.x-q.impactX,dy=player.spawn.y-10-q.impactY,length=Math.hypot(dx,dy);
   if(length<1){dx=player.spawn.facing||1;dy=-.25;length=Math.hypot(dx,dy);}

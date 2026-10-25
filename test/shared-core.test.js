@@ -7,7 +7,9 @@ import {createGameplayCore} from '../simulation/core.js';
 const mask=new Uint8Array(readFileSync(new URL('../assets/huancavelica-v2-terrain-mask.bin',import.meta.url)));
 test('shared core deterministic commands, seeds, contacts, cuts, physics and utilities replay',()=>{
  const a=runCoreScenario(mask),b=runCoreScenario(mask);assert.deepEqual(a,b);
- assert.equal(createHash('sha256').update(JSON.stringify(a)).digest('hex'),'c50546629d5cd0351d2cf60072f592a96bd59053ae7a55f8febb3d23eee36377');
+ // Full wheel support changes four post-crater landing heights; contacts, HP,
+ // cuts and turn results match the previous recorded replay (see QA diff).
+ assert.equal(createHash('sha256').update(JSON.stringify(a)).digest('hex'),'58169e4bfa7e91a342eac12069fbac955e87d033ebe41f7e4fdf1198d9cd964b');
  for(const c of a.filter(x=>['basic','heavy','triple','cluster','airstrike','nuke'].includes(x.type))){
   assert.ok(c.state.arena.craters.length>0,c.type+' real cut');assert.equal(c.state.match.projectile,null);
   assert.ok(c.state.players.some(p=>p.hp<100),c.type+' real damage');

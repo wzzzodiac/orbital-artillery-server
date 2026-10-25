@@ -1,5 +1,5 @@
 import {VEHICLE_BODY} from './collision.js';
-import {HUANCAVELICA_V2_WORLD_HEIGHT,HUANCAVELICA_V2_WORLD_WIDTH} from './terrain.js';
+import {HUANCAVELICA_V2_WORLD_HEIGHT,HUANCAVELICA_V2_WORLD_WIDTH} from './terrain.js?v=bitmap-maps-1';
 // World units / seconds. The server is the only authority for these values.
 export const V2_AIR_PHYSICS = Object.freeze({
   jumpImpulse: 900,
@@ -17,10 +17,16 @@ export const V2_AIR_PHYSICS = Object.freeze({
   maxStepSeconds: 1 / 120,
   voidBoundary: HUANCAVELICA_V2_WORLD_HEIGHT + 80
 });
+const legacyAirPhysics=V2_AIR_PHYSICS;
+const recoveryOffsets=[];
+for(let dx=-12;dx<=12;dx++)for(let dy=-12;dy<=12;dy++)if(dx*dx+dy*dy>0&&dx*dx+dy*dy<=144)recoveryOffsets.push([dx,dy]);
+recoveryOffsets.sort(([ax,ay],[bx,by])=>ax*ax+ay*ay-bx*bx-by*by||ay-by||ax-bx);
 
-
-export function createAirbornePhysics(terrain){
-const {findHuancavelicaV2SurfaceNear,isHuancavelicaV2Solid,firstHuancavelicaV2SolidOnSegment}=terrain;
+export function createAirbornePhysics(terrain,overrides={}){
+// Factory-scoped tuning avoids modifying the legacy/online global contract.
+const HUANCAVELICA_V2_WORLD_WIDTH=terrain.geometry?.worldWidth??5000;
+const V2_AIR_PHYSICS=Object.freeze({...legacyAirPhysics,voidBoundary:(terrain.geometry?.worldHeight??3750)+80,...overrides});
+const {isHuancavelicaV2Solid,firstHuancavelicaV2SolidOnSegment}=terrain;
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const solid = (room, x, y) => isHuancavelicaV2Solid(room, x, y);
 const sideBlocked = (room, x, y, direction) => {
@@ -31,11 +37,32 @@ const sideBlocked = (room, x, y, direction) => {
 const headBlocked = (room, x, y) => {for(let dx=-45;dx<=45;dx+=3)if(solid(room,x+dx,y+V2_AIR_PHYSICS.bodyTop))return true;return false;};
 const bodyClear = (room, x, y) => ![-55,-30,-8].some(offset => [-42,0,42].some(dx => solid(room,x+dx,y+offset)));
 
+function bodyOverlaps(room,x,y){
+  if(!bodyClear(room,x,y)||headBlocked(room,x,y)||sideBlocked(room,x,y,-1)||sideBlocked(room,x,y,1))return true;
+  for(let dx=-V2_AIR_PHYSICS.bodyHalfWidth;dx<=V2_AIR_PHYSICS.bodyHalfWidth;dx+=3)if(solid(room,x+dx,y-4))return true;
+  return false;
+}
+function separateBody(room,player){
+  if(!player.spawn||(player.alive===false&&!player.dynamicBody)||!bodyOverlaps(room,player.spawn.x,player.spawn.y))return false;
+  const {x,y}=player.spawn,half=V2_AIR_PHYSICS.bodyHalfWidth;
+  // Repair only a shallow contact overlap (at most four mask pixels). Never
+  // respawn the player or snap them across a ledge to a different platform.
+  for(const [dx,dy]of recoveryOffsets){
+    const nextX=x+dx,nextY=y+dy;
+    if(nextX<half||nextX>HUANCAVELICA_V2_WORLD_WIDTH-half||bodyOverlaps(room,nextX,nextY))continue;
+    player.spawn={...player.spawn,x:nextX,y:nextY};
+    if(player.airborne){if(dx*player.airborne.vx<0)player.airborne.vx=0;if(dy*player.airborne.vy<0)player.airborne.vy=0;}
+    return true;
+  }
+  return false;
+}
+
 function v2GroundSurface(room, spawn) {
   if (!spawn) return null;
   const feet = spawn.y + V2_AIR_PHYSICS.bodyFeet;
   let surface=null;
-  for(let dx=-36;dx<=36;dx+=3){
+  // Support uses the full collision width, including the outer wheel edge.
+  for(let dx=-V2_AIR_PHYSICS.bodyHalfWidth;dx<=V2_AIR_PHYSICS.bodyHalfWidth;dx+=3){
     if(solid(room,spawn.x+dx,feet-7)||!solid(room,spawn.x+dx,feet+9))continue;
     const hit=firstHuancavelicaV2SolidOnSegment(room,{x:spawn.x+dx,y:feet-7},{x:spawn.x+dx,y:feet+9});
     if(hit&&(surface==null||hit.y<surface))surface=hit.y;
@@ -66,20 +93,27 @@ function setV2AirInput(player, direction) {
 }
 
 function walkV2Player(room,player,direction,now,onStep=()=>{}){
-  const beforeX=player.spawn.x;player.motion=null;
+  const beforeX=player.spawn.x;player.motion=null;const recovered=separateBody(room,player);
   for(let remaining=15;remaining>0;remaining-=2){
     const x=clamp(player.spawn.x+direction*Math.min(2,remaining),45,HUANCAVELICA_V2_WORLD_WIDTH-45),feet=player.spawn.y+8;
     if(x===player.spawn.x)break;
-    const surfaces=[-36,0,36].map(dx=>findHuancavelicaV2SurfaceNear(room,x+dx,feet,42,42)).filter(y=>y!=null);
-    if(!surfaces.length){player.spawn={...player.spawn,x,facing:direction};startV2Airborne(player,now,{reason:'ledge'});onStep(player);return{moved:true,naturalDrop:true};}
-    const y=Math.min(...surfaces)-8;
+    let surface=null;
+    // Physical wheel contacts include map boundaries and small terrain crests.
+    // The broad playable-surface filter is for placement, not body collision.
+    for(let dx=-V2_AIR_PHYSICS.bodyHalfWidth;dx<=V2_AIR_PHYSICS.bodyHalfWidth;dx+=3){
+      const from={x:x+dx,y:feet-42};if(solid(room,from.x,from.y))continue;
+      const hit=firstHuancavelicaV2SolidOnSegment(room,from,{x:from.x,y:feet+42});
+      if(hit&&(surface==null||hit.y<surface))surface=hit.y;
+    }
+    if(surface==null){player.spawn={...player.spawn,x,facing:direction};startV2Airborne(player,now,{reason:'ledge'});onStep(player);return{moved:true,naturalDrop:true};}
+    const y=surface-8;
     if(!bodyClear(room,x,y)||sideBlocked(room,x,y,direction)||headBlocked(room,x,y))break;
     let ceiling=false;
     if(y<player.spawn.y)for(let dx=-45;dx<=45;dx+=3)if(firstHuancavelicaV2SolidOnSegment(room,{x:player.spawn.x+dx,y:player.spawn.y+V2_AIR_PHYSICS.bodyTop},{x:x+dx,y:y+V2_AIR_PHYSICS.bodyTop})){ceiling=true;break;}
     if(ceiling)break;
     player.spawn={x,y,facing:direction};onStep(player);
   }
-  return{moved:player.spawn.x!==beforeX};
+  return{moved:recovered||player.spawn.x!==beforeX};
 }
 
 function sweepHorizontal(room, player, delta) {
@@ -100,7 +134,7 @@ function landingSurface(room, spawn, previousFeet) {
   let surface=null;
   // Partial wheel support is valid. A blocked foot must become a landing,
   // not vy=0 while rejecting the same narrow edge on every later tick.
-  for(let dx=-36;dx<=36;dx+=3){
+  for(let dx=-V2_AIR_PHYSICS.bodyHalfWidth;dx<=V2_AIR_PHYSICS.bodyHalfWidth;dx+=3){
     let fromY=previousFeet;
     if(solid(room,spawn.x+dx,fromY)){
       for(let rise=3;rise<=33&&solid(room,spawn.x+dx,fromY);rise+=3)fromY=previousFeet-rise;
@@ -129,14 +163,15 @@ function sweepVertical(room, player, delta) {
 }
 
 function advanceV2AirbornePlayer(room, player, now, onStep=()=>{}) {
+  const recovered=separateBody(room,player);
   const air = player.airborne;
-  if (!air || !player.spawn || player.alive === false) return false;
+  if (!air || !player.spawn || (player.alive === false&&!player.dynamicBody)) return recovered;
   // Bounded elapsed time avoids a huge teleport after process suspension. Every
   // simulated move is spatially swept, so even a late tick cannot tunnel.
   const elapsed=Math.max(0,(now-air.updatedAt)/1000);
   let remaining = Math.min(elapsed,.25);
   air.droppedSeconds=(air.droppedSeconds??0)+Math.max(0,elapsed-.25);
-  if (!remaining) return false;
+  if (!remaining) return recovered;
   while (remaining > 1e-7 && player.airborne) {
     const dt = Math.min(remaining, V2_AIR_PHYSICS.maxStepSeconds);
     remaining -= dt;
@@ -156,6 +191,7 @@ function advanceV2AirbornePlayer(room, player, now, onStep=()=>{}) {
       player.v2HorizontalInput = 0;
       player.alive = false;
       player.hp = 0;
+      if(player.dynamicBody)player.outOfWorld=true;
       break;
     }
   }

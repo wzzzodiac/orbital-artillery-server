@@ -1,8 +1,8 @@
-import {createBitmapTerrain,HUANCAVELICA_V2_WORLD_HEIGHT as height} from './terrain.js';
-import {createAirbornePhysics} from './airborne.js';
-import {createWeaponRules} from './weapons.js';
-import {createCombatResolver} from './combat.js';
-import {createV2Attack} from './projectiles.js';
+import {createBitmapTerrain,HUANCAVELICA_V2_WORLD_HEIGHT as height} from './terrain.js?v=bitmap-maps-1';
+import {createAirbornePhysics} from './airborne.js?v=contact-fix-20261025';
+import {createWeaponRules} from './weapons.js?v=bitmap-maps-1';
+import {createCombatResolver} from './combat.js?v=bitmap-maps-1';
+import {createV2Attack} from './projectiles.js?v=bitmap-maps-1';
 import {collectOneByTouch,useUtility,nextEventId,seededRandom,chooseItem} from './rules.js';
 const clone=value=>structuredClone(value);
 export function resultFor(room){
@@ -33,14 +33,16 @@ export function simulationPolicy({practice=false}={}){
 export function advanceBodies(room,now,physics,onStep=()=>{}){
  let changed=false;const m=room.match;
  for(const p of room.players){
-  if(p.alive===false||!p.spawn||p.dummy)continue;
+  if((p.alive===false&&!p.dynamicBody)||!p.spawn||p.outOfWorld||(p.dummy&&!p.dynamicBody))continue;
   if(p.id!==m.activePlayerId||m.projectile||now>=m.turnEndsAt){p.v2HorizontalInput=0;if(p.airborne)p.airborne.input=0;}
   if(!p.airborne&&(!p.motion||p.motion.endsAt<=now)&&physics.v2GroundSurface(room,p.spawn)==null)changed=physics.startV2Airborne(p,now,{reason:'support_loss'})||changed;
   changed=physics.advanceV2AirbornePlayer(room,p,now,()=>onStep(p))||changed;
  }return changed;
 }
-export function createGameplayCore(mask,{practice=false,policy:injectedPolicy}={}){
- const terrain=createBitmapTerrain(mask),physics=createAirbornePhysics(terrain),weapons=createWeaponRules(terrain),policy=injectedPolicy??simulationPolicy({practice});
+export function createGameplayCore(mask,{practice=false,policy:injectedPolicy,tuning={},terrainConfig}={}){
+ // Tuning is an offline-only opt-in. Never accept it from multiplayer commands.
+ const localTuning=practice?tuning:{};
+ const terrain=createBitmapTerrain(mask,terrainConfig),physics=createAirbornePhysics(terrain,localTuning.air),weapons=createWeaponRules(terrain),policy=injectedPolicy??simulationPolicy({practice});
  const combat=createCombatResolver({terrain,physics,weapons,policy});
  function command(room,id,event,payload={},now){
   if(!Number.isFinite(now))return{ok:false,error:'invalid_clock'};
@@ -62,7 +64,8 @@ export function createGameplayCore(mask,{practice=false,policy:injectedPolicy}={
   if(slot>1&&!item)return{ok:false,error:'empty_item_slot'};
   room.simulation??={seed:1,eventSequence:0};
   const weaponType=item?.type??'basic',idAttack=nextEventId(room.simulation,'attack');
-  m.projectile=createV2Attack(room,p,{id:idAttack,startedAt:now+(weaponType==='airstrike'?0:567),weaponType},terrain,weapons);
+  const timing=localTuning.timing??{},launchDelay=weaponType==='airstrike'?0:weaponType==='basic'?(timing.basicLaunchDelayMs??567):567;
+  m.projectile=createV2Attack(room,p,{id:idAttack,startedAt:now+launchDelay,weaponType,timing},terrain,weapons);
   if(item){p.inventory[slot-2]=null;p.selectedItemSlot=1;}return{ok:true};
  }
  function tick(room,now){

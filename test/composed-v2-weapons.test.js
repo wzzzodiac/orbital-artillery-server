@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createRoom, joinRoom, setGameMode, setPlayerReady, startRoom, activateRoom, roomStore } from '../rooms.js';
+import { createRoom, joinRoom, setGameMode, setPlayerReady, setTerrainPreset, startRoom, activateRoom, roomStore } from '../rooms.js';
 import { setTerrain9, publicRoomState9, fireProjectile9, advanceTurnIfDue9, rematchRoom9, setAim9 } from '../phase11-huancavelica-v2.js';
 import { isHuancavelicaV2Solid, huancavelicaV2MaskForRoom, findHuancavelicaV2SurfaceBelow, HUANCAVELICA_V2_SCALE as scale } from '../huancavelica-v2-bitmap.js';
 
@@ -9,7 +9,9 @@ function fixture(weapon, run, { map='huancavelica-v2', mode='team', setup=()=>{}
   const original = Date.now; Date.now = () => now; roomStore.clear(); now += 100_000;
   try {
     const room = createRoom('a', 'A').room; joinRoom(room.code, 'b', 'B');
-    setGameMode('a',mode); setTerrain9('a', map); setPlayerReady('a', true); setPlayerReady('b', true); startRoom('a');
+    // Retired heightfields are private regression fixtures, never public choices.
+    const select=['rolling','brokenridge','huancavelica-v2'].includes(map)?setTerrain9:setTerrainPreset;
+    setGameMode('a',mode); assert.equal(select('a',map).ok,true); setPlayerReady('a', true); setPlayerReady('b', true); startRoom('a');
     now = room.match.startAt; activateRoom(room.code, now); publicRoomState9(room);
     room.match.activePlayerId = 'b'; room.match.turnIndex = room.match.turnOrder.indexOf('b');
     room.match.wind = { signed: 0, strength: 0, direction: 'none' };

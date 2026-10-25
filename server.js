@@ -2,6 +2,8 @@ import { createServer } from 'node:http';
 import { Server as SocketIOServer } from 'socket.io';
 
 import { CONFIG } from './config.js';
+import {normalizeAppearance} from './appearance.js';
+import {setPlayerAppearance} from './rooms.js';
 import {
   activateRoom,
   cleanupExpiredLobbies,
@@ -11,10 +13,10 @@ import {
   roomStore,
   setGameMode,
   setPlayerReady,
-  setPlayerTeam,
-  startRoom
+  setPlayerTeam
 } from './rooms.js';
 import {
+  startRoom,
   advanceTurnIfDue9,
   disconnectPlayer9,
   fireProjectile9,
@@ -26,7 +28,7 @@ import {
   setAim9,
   setTerrain9,
   setAirInput11
-} from './phase11-huancavelica-v2.js';
+} from './phase12-themed-maps.js';
 import {
   ensureAfkVoteState,
   registerActiveTurnActivity,
@@ -115,11 +117,12 @@ io.on('connection', socket => {
     emitRoomState(result.room);
   }
 
-  onClientEvent(socket, 'create_room', (payload, reply = () => {}) => { if (!allowRoomAction()) return reply({ ok: false, error: 'room_action_rate_limited' }); if (findRoomBySocket(socket.id)) return reply({ ok: false, error: 'already_in_room' }); const name = normalizePlayerName(payload?.name); if (!name) return reply({ ok: false, error: 'invalid_name' }); const result = createRoom(socket.id, name, socket.data.clientIdentity); if (!result.ok) return reply(result); result.room.players.find(p => p.id === socket.id).connected = true; socket.join(result.room.code); reply({ ok: true, room: publicState(result.room), playerId: socket.id }); emitRoomState(result.room); });
-  onClientEvent(socket, 'join_room', (payload, reply = () => {}) => { if (!allowRoomAction()) return reply({ ok: false, error: 'room_action_rate_limited' }); if (findRoomBySocket(socket.id)) return reply({ ok: false, error: 'already_in_room' }); const name = normalizePlayerName(payload?.name), code = String(payload?.code ?? '').trim().toUpperCase(); if (!name) return reply({ ok: false, error: 'invalid_name' }); if (!isValidRoomCode(code)) return reply({ ok: false, error: 'invalid_room_code' }); const result = joinRoom(code, socket.id, name, socket.data.clientIdentity); if (!result.ok) return reply(result); result.room.players.find(p => p.id === socket.id).connected = true; socket.join(code); reply({ ok: true, room: publicState(result.room), playerId: socket.id }); emitRoomState(result.room); });
+  onClientEvent(socket, 'create_room', (payload, reply = () => {}) => { if (!allowRoomAction()) return reply({ ok: false, error: 'room_action_rate_limited' }); if (findRoomBySocket(socket.id)) return reply({ ok: false, error: 'already_in_room' }); const name = normalizePlayerName(payload?.name); if (!name) return reply({ ok: false, error: 'invalid_name' }); const result = createRoom(socket.id, name, socket.data.clientIdentity); if (!result.ok) return reply(result); Object.assign(result.room.players.find(p => p.id === socket.id),{connected:true,appearance:normalizeAppearance(payload)}); socket.join(result.room.code); reply({ ok: true, room: publicState(result.room), playerId: socket.id }); emitRoomState(result.room); });
+  onClientEvent(socket, 'join_room', (payload, reply = () => {}) => { if (!allowRoomAction()) return reply({ ok: false, error: 'room_action_rate_limited' }); if (findRoomBySocket(socket.id)) return reply({ ok: false, error: 'already_in_room' }); const name = normalizePlayerName(payload?.name), code = String(payload?.code ?? '').trim().toUpperCase(); if (!name) return reply({ ok: false, error: 'invalid_name' }); if (!isValidRoomCode(code)) return reply({ ok: false, error: 'invalid_room_code' }); const result = joinRoom(code, socket.id, name, socket.data.clientIdentity); if (!result.ok) return reply(result); Object.assign(result.room.players.find(p => p.id === socket.id),{connected:true,appearance:normalizeAppearance(payload)}); socket.join(code); reply({ ok: true, room: publicState(result.room), playerId: socket.id }); emitRoomState(result.room); });
   onClientEvent(socket, 'set_mode', (payload, reply = () => {}) => { if (!allowRoomAction()) return reply({ ok: false, error: 'room_action_rate_limited' }); replyMutation(setGameMode(socket.id, String(payload?.mode ?? '').toLowerCase()), reply); });
   onClientEvent(socket, 'set_terrain', (payload, reply = () => {}) => { if (!allowRoomAction()) return reply({ ok: false, error: 'room_action_rate_limited' }); replyMutation(setTerrain9(socket.id, String(payload?.terrain ?? '').toLowerCase()), reply); });
   onClientEvent(socket, 'set_ready', (payload, reply = () => {}) => { if (!allowRoomAction()) return reply({ ok: false, error: 'room_action_rate_limited' }); replyMutation(setPlayerReady(socket.id, payload?.ready), reply); });
+  onClientEvent(socket, 'set_appearance', (payload, reply = () => {}) => { if (!allowRoomAction()) return reply({ ok: false, error: 'room_action_rate_limited' }); replyMutation(setPlayerAppearance(socket.id,payload.animal,payload.cart),reply); });
   onClientEvent(socket, 'set_team', (payload, reply = () => {}) => { if (!allowRoomAction()) return reply({ ok: false, error: 'room_action_rate_limited' }); replyMutation(setPlayerTeam(socket.id, String(payload?.team ?? '').toUpperCase()), reply); });
   onClientEvent(socket, 'start_game', (_payload, reply = () => {}) => { if (!allowRoomAction()) return reply({ ok: false, error: 'room_action_rate_limited' }); replyMutation(startRoom(socket.id), reply); });
   onClientEvent(socket, 'rematch_game', (payload, reply = () => {}) => { if (!allowRoomAction()) return reply({ ok: false, error: 'room_action_rate_limited' }); replyMutation(rematchRoom9(socket.id, { randomMap: Boolean(payload?.randomMap) }), reply); });

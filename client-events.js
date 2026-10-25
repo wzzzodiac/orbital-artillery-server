@@ -1,3 +1,5 @@
+import {validAnimal,validCart} from './appearance.js';
+
 const text = max => value => typeof value === 'string' && value.length <= max;
 const number = value => typeof value === 'number' && Number.isFinite(value);
 const boolean = value => typeof value === 'boolean';
@@ -5,8 +7,9 @@ const direction = value => number(value) && [-1, 0, 1].includes(value);
 
 // Only fields used by the protocol may reach a game handler.
 const schemas = {
-  create_room: { required: { name: text(256) } },
-  join_room: { required: { name: text(256), code: text(32) } },
+  create_room: { required: { name: text(256) }, optional: {animal:validAnimal,cart:validCart} },
+  join_room: { required: { name: text(256), code: text(32) }, optional: {animal:validAnimal,cart:validCart} },
+  set_appearance: { required: {animal:validAnimal,cart:validCart} },
   set_mode: { required: { mode: text(32) } },
   set_terrain: { required: { terrain: text(64) } },
   set_ready: { required: { ready: boolean } },

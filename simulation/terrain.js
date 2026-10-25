@@ -11,8 +11,10 @@ export const HUANCAVELICA_V2_WORLD_HEIGHT=HUANCAVELICA_V2_IMAGE_HEIGHT*HUANCAVEL
 
 
 // Pure factory: loaders supply packed bits; no filesystem, DOM, clock or RNG.
-export function createBitmapTerrain(CLEAN_MASK){
-if(!(CLEAN_MASK instanceof Uint8Array)||CLEAN_MASK.length!==Math.ceil(1448*1086/8))throw new TypeError('Invalid packed terrain mask');
+export function createBitmapTerrain(CLEAN_MASK,{imageWidth=1448,imageHeight=1086,worldWidth=5000,worldHeight=imageHeight*worldWidth/imageWidth}={}){
+const HUANCAVELICA_V2_IMAGE_WIDTH=imageWidth,HUANCAVELICA_V2_IMAGE_HEIGHT=imageHeight,HUANCAVELICA_V2_WORLD_WIDTH=worldWidth,HUANCAVELICA_V2_WORLD_HEIGHT=worldHeight,HUANCAVELICA_V2_SCALE=worldWidth/imageWidth;
+if(![imageWidth,imageHeight,worldWidth,worldHeight].every(v=>Number.isFinite(v)&&v>0)||!Number.isInteger(imageWidth)||!Number.isInteger(imageHeight)||Math.abs(imageHeight*HUANCAVELICA_V2_SCALE-worldHeight)>1e-6)throw new TypeError('Invalid uniform terrain geometry');
+if(!(CLEAN_MASK instanceof Uint8Array)||CLEAN_MASK.length!==Math.ceil(imageWidth*imageHeight/8))throw new TypeError('Invalid packed terrain mask');
 const roomMasks=new WeakMap();
 let snapshotRoom=null,snapshotMask=null;
 // Read-only query scope: validate a crater signature once for a full body sweep.
@@ -113,5 +115,5 @@ function huancavelicaV2JumpPathClear(room,from,to,apex){
 
 const huancavelicaV2BitmapTestHooks=Object.freeze({CLEAN_MASK,bitIndex,hasBit,craterSignature,boundaryAt,boundaryNearPixel});
 
-return Object.freeze({withTerrainSnapshot,huancavelicaV2ImageToWorld,worldToHuancavelicaV2Image,clearHuancavelicaV2Crater,huancavelicaV2MaskForRoom,isHuancavelicaV2Solid,isPlayableHuancavelicaV2Boundary,huancavelicaV2SurfaceCandidatesBelow,findHuancavelicaV2SurfaceBelow,findHuancavelicaV2SurfaceNear,huancavelicaV2LandingHasRun,firstHuancavelicaV2SolidOnSegment,firstHuancavelicaV2ProjectileImpact,huancavelicaV2JumpPathClear,huancavelicaV2BitmapTestHooks});
+return Object.freeze({geometry:Object.freeze({imageWidth,imageHeight,worldWidth,worldHeight,scale:HUANCAVELICA_V2_SCALE}),withTerrainSnapshot,huancavelicaV2ImageToWorld,worldToHuancavelicaV2Image,clearHuancavelicaV2Crater,huancavelicaV2MaskForRoom,isHuancavelicaV2Solid,isPlayableHuancavelicaV2Boundary,huancavelicaV2SurfaceCandidatesBelow,findHuancavelicaV2SurfaceBelow,findHuancavelicaV2SurfaceNear,huancavelicaV2LandingHasRun,firstHuancavelicaV2SolidOnSegment,firstHuancavelicaV2ProjectileImpact,huancavelicaV2JumpPathClear,huancavelicaV2BitmapTestHooks});
 }

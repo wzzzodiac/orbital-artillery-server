@@ -79,7 +79,10 @@ test('real Socket.IO transport survives malformed events and enforces map author
   assert.equal((await guest.request('set_terrain', { terrain: 'rolling' })).error, 'host_only');
   const state = await host.request('set_ready', { ready: true });
   assert.equal(state.room.terrainPreset, 'huancavelica-v2');
-  assert.equal((await host.request('set_terrain', { terrain: 'islands' })).room.terrainPreset, 'islands');
+  assert.deepEqual(await host.request('set_terrain', { terrain: 'islands' }),{ok:false,error:'invalid_terrain'});
+  const retained=await host.request('set_terrain',{terrain:'brokenridge'});
+  assert.equal(retained.room.terrainPreset,'brokenridge');
+  assert.deepEqual(retained.room.terrainPresets.map(map=>map.id),['rolling','brokenridge','huancavelica-v2']);
   assert.equal(JSON.parse(await fetchText('/health')).ok, true);
   assert.equal(child.exitCode, null);
 });
