@@ -1,6 +1,7 @@
 import {traceFlight} from './collision.js';
-import {HUANCAVELICA_V2_WORLD_HEIGHT as height,HUANCAVELICA_V2_WORLD_WIDTH as width} from './terrain.js';
+import {HUANCAVELICA_V2_WORLD_HEIGHT as height,HUANCAVELICA_V2_WORLD_WIDTH as width} from './terrain.js?v=bitmap-maps-1';
 export function createWeaponRules(terrain){
+const width=terrain.geometry?.worldWidth??5000,height=terrain.geometry?.worldHeight??3750;
 const {firstHuancavelicaV2SolidOnSegment}=terrain;
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const rules = Object.freeze({

@@ -87,7 +87,10 @@ test('real Socket.IO transport survives malformed events and enforces map author
   assert.ok(!host.received.some(packet => packet.startsWith('42') && packet.includes('room_state')), 'state ACK must not be duplicated to sender');
   await host.raw(['set_ready', { ready: false }]);
   assert.ok((await host.poll()).some(packet => packet.startsWith('42') && packet.includes('room_state')), 'fire-and-forget still receives state');
-  assert.equal((await host.request('set_terrain', { terrain: 'islands' })).room.terrainPreset, 'islands');
+  assert.deepEqual(await host.request('set_terrain', { terrain: 'islands' }),{ok:false,error:'invalid_terrain'});
+  const retained=await host.request('set_terrain',{terrain:'brokenridge'});
+  assert.equal(retained.room.terrainPreset,'brokenridge');
+  assert.deepEqual(retained.room.terrainPresets.map(map=>map.id),['rolling','brokenridge','huancavelica-v2']);
   assert.equal(JSON.parse(await fetchText('/health')).ok, true);
   assert.equal(child.exitCode, null);
 });

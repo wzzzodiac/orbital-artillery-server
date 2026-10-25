@@ -1,6 +1,8 @@
+import {initializeThemedSpawns} from './themed-bitmap.js';
 import { randomInt } from 'node:crypto';
 import { CONFIG } from './config.js';
 import { initializeV2Spawns } from './huancavelica-v2-state.js';
+import {normalizeAppearance,validAnimal,validCart} from './appearance.js';
 
 // Legacy public decorators may normalize a detached view, but cannot maintain
 // pickups or roll RNG while serializing the authoritative v2 room.
@@ -64,11 +66,11 @@ export const COMBAT_MOTION_RULES = Object.freeze({
 
 // EASY TERRAIN RENAMING: change ONLY the text on the right.
 const TERRAIN_LABELS = Object.freeze({
-  rolling: 'Rolling Expanse',
+  rolling: 'Chacras del Chillón',
   terraces: 'Terrace Line',
   twinpeaks: 'Twin Peaks',
   basin: 'Impact Basin',
-  brokenridge: 'Broken Ridge',
+  brokenridge: 'Cantera de Carabayllo',
   islands: 'Drift Islands',
   canyon: 'Canyon Run'
 });
@@ -173,7 +175,7 @@ function previewArena(room) {
   return { id: `preview-${room.terrainPreset}`, terrainPreset: room.terrainPreset, terrainName: TERRAIN_LABELS[room.terrainPreset], craters: [], previewSpawns: evenSpawnPositions(room.players.length), worldWidth: WORLD_WIDTH, worldHeight: WORLD_HEIGHT, viewportWidth: VIEWPORT_WIDTH, viewportHeight: VIEWPORT_HEIGHT, unitsWide: 5, unitsHigh: 5, viewportUnitsWide: 1, viewportUnitsHigh: 1, seed: room.code, generatedAt: room.createdAt };
 }
 function publicPlayer(player, hostId) {
-  return { id: player.id, name: player.name, ready: player.ready, team: player.team, isHost: player.id === hostId, alive: player.alive !== false, hp: player.hp ?? MAX_HP, maxHp: MAX_HP, spawn: player.spawn ?? null, motion: player.motion ?? null, lastDamage: player.lastDamage ?? null };
+  return { id: player.id, name: player.name, appearance:normalizeAppearance(player.appearance), ready: player.ready, team: player.team, isHost: player.id === hostId, alive: player.alive !== false, hp: player.hp ?? MAX_HP, maxHp: MAX_HP, spawn: player.spawn ?? null, motion: player.motion ?? null, lastDamage: player.lastDamage ?? null };
 }
 export function publicRoomState(room) {
   return { code: room.code, status: room.status, mode: room.mode, terrainPreset: room.terrainPreset, terrainPresets: Object.keys(TERRAIN_LABELS).map(id => ({ id, name: TERRAIN_LABELS[id] })), maxPlayers: CONFIG.maxPlayers, arena: room.arena ?? previewArena(room), camera: room.camera ?? null, match: room.match ?? null, players: room.players.map(player => publicPlayer(player, room.hostId)) };
@@ -218,6 +220,17 @@ export function joinRoom(roomCode, socketId, playerName, clientIdentity = socket
   return { ok: true, room };
 }
 export function findRoomBySocket(socketId) { for (const room of roomStore.values()) if (room.players.some(player => player.id === socketId)) return room; return null; }
+
+export function setPlayerAppearance(socketId,animal,cart){
+  const room=findRoomBySocket(socketId);
+  if(!room)return {ok:false,error:'not_in_room'};
+  if(room.status!=='lobby')return {ok:false,error:'appearance_locked'};
+  if(!validAnimal(animal)||!validCart(cart))return {ok:false,error:'invalid_appearance'};
+  const player=room.players.find(p=>p.id===socketId),previous=normalizeAppearance(player.appearance);
+  const next=normalizeAppearance({animal,cart});
+  if(previous.animal!==next.animal||previous.cart!==next.cart){player.appearance=next;player.ready=false;touchLobby(room);}
+  return {ok:true,room};
+}
 
 export function cleanupExpiredLobbies(now = Date.now(), options = {}) {
   const inactivityMs = options.inactivityMs ?? CONFIG.lobbyInactivityMinutes * 60_000;
@@ -342,7 +355,7 @@ export function startRoom(socketId) {
   const room = findRoomBySocket(socketId); if (!room) return { ok: false, error: 'not_in_room' }; if (room.status !== 'lobby') return { ok: false, error: 'room_already_started' }; if (room.hostId !== socketId) return { ok: false, error: 'host_only' };
   if (room.players.length < 2) return { ok: false, error: 'not_enough_players' }; if (!room.players.every(player => player.ready)) return { ok: false, error: 'players_not_ready' };
   if (room.mode === 'team') { const teamA = room.players.filter(player => player.team === 'A').length, teamB = room.players.filter(player => player.team === 'B').length; if (!teamA || !teamB) return { ok: false, error: 'both_teams_required' }; }
-  assignArena(room); initializeV2Spawns(room); room.status = 'countdown'; room.startedAt = Date.now(); return { ok: true, room };
+  assignArena(room); initializeV2Spawns(room); initializeThemedSpawns(room); room.status = 'countdown'; room.startedAt = Date.now(); return { ok: true, room };
 }
 export function activateRoom(roomCode, now = Date.now()) { const room = getRoom(roomCode); if (!room || room.status !== 'countdown') return null; room.status = 'started'; room.match.activatedAt = now; return beginTurn(room, 0, now); }
 

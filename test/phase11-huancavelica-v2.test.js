@@ -49,11 +49,13 @@ test('public terrain pool exposes v2 but never legacy Huancavelica',()=>{
 });
 
 test('random selection and random rematch cannot revive v1 while legacy recovery remains available',()=>{
-  roomStore.clear();const room=createRoom('map-host','Host').room;joinRoom(room.code,'map-guest','Guest');
+  roomStore.clear();let room=createRoom('map-host','Host').room;joinRoom(room.code,'map-guest','Guest');
   for(let i=0;i<30;i+=1){
     assert.equal(setTerrain11('map-host','random').ok,true);
     assert.notEqual(publicRoomState11(room).terrainPreset,'huancavelica');
   }
+  // Recovery starts from a historical room, independent of a random v2 alias.
+  roomStore.clear();room=createRoom('map-host','Host').room;joinRoom(room.code,'map-guest','Guest');
   assert.equal(setLegacyHuancavelica('map-host','huancavelica').ok,true,'Phase 10 legacy implementation remains callable for recovery');
   const legacy=publicRoomState11(room);
   assert.equal(legacy.terrainPreset,'huancavelica');
@@ -67,7 +69,7 @@ test('random selection and random rematch cannot revive v1 while legacy recovery
   assert.ok(!publicRoomState11(room).terrainPresets.some(entry=>entry.id==='huancavelica'));
 });
 
-test('an existing legacy v1 room can rematch on its original map without reopening public selection',()=>{
+test('a retired v1 room rematches on Rolling Expanse without reviving the retired map',()=>{
   roomStore.clear();const room=createRoom('legacy-host','Host').room;joinRoom(room.code,'legacy-guest','Guest');
   assert.equal(setLegacyHuancavelica('legacy-host','huancavelica').ok,true);
   for(const id of ['legacy-host','legacy-guest'])setPlayerReady(id,true);
@@ -75,7 +77,7 @@ test('an existing legacy v1 room can rematch on its original map without reopeni
   room.status='finished';room.match.result={type:'survival',winnerPlayerId:'legacy-host',winnerName:'Host',draw:false};room.match.finishedAt=Date.now();
   assert.equal(rematchRoom11('legacy-host',{randomMap:false}).ok,true);
   const state=publicRoomState11(room);
-  assert.equal(state.terrainPreset,'huancavelica');
+  assert.equal(state.terrainPreset,'rolling');
   assert.ok(!state.terrainPresets.some(entry=>entry.id==='huancavelica'));
 });
 

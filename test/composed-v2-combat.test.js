@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createRoom, joinRoom, setGameMode, setPlayerReady, startRoom, activateRoom, roomStore } from '../rooms.js';
+import { createRoom, joinRoom, setGameMode, setPlayerReady, setTerrainPreset, startRoom, activateRoom, roomStore } from '../rooms.js';
 // These are the composed exports imported by server.js, not an older phase.
 import {
   setTerrain9, publicRoomState9, fireProjectile9, advanceTurnIfDue9,
@@ -19,7 +19,10 @@ function started({ mode = 'team', ids = ['a', 'b'], map = 'huancavelica-v2' } = 
   const room = createRoom(ids[0], ids[0].toUpperCase()).room;
   for (const id of ids.slice(1)) assert.equal(joinRoom(room.code, id, id.toUpperCase()).ok, true);
   assert.equal(setGameMode(ids[0], mode).ok, true);
-  assert.equal(setTerrain9(ids[0], map).ok, true);
+  // Archived geometry remains a low-level collision regression fixture only;
+  // the public selector rejects those maps (covered by map-catalog.test.js).
+  const select=['rolling','brokenridge','huancavelica-v2'].includes(map)?setTerrain9:setTerrainPreset;
+  assert.equal(select(ids[0], map).ok, true);
   for (const id of ids) assert.equal(setPlayerReady(id, true).ok, true);
   assert.equal(startRoom(ids[0]).ok, true);
   publicRoomState9(room);

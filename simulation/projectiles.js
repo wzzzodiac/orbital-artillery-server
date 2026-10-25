@@ -1,5 +1,5 @@
 import {createAimFlight,projectileMuzzle,traceFlight} from './collision.js';
-export function adjustProjectile(room,q,terrain){
+export function adjustProjectile(room,q,terrain,timing={}){
   const {isHuancavelicaV2Solid,firstHuancavelicaV2SolidOnSegment}=terrain;
   if(!q)return false;
   const shots=q.weaponType==='triple'&&Array.isArray(q.volley)?q.volley:[q];
@@ -10,9 +10,11 @@ export function adjustProjectile(room,q,terrain){
     shot.vx*=oldScale;shot.vy*=oldScale;shot.gravity*=oldScale**2;shot.windAccel*=oldScale**2;
     shot.collisionTimeScale=1;
     Object.assign(shot,projectileMuzzle(shot,(x,y)=>isHuancavelicaV2Solid(room,x,y)));
-    const hit=traceFlight(shot,{players:room.players,ownerId:q.ownerPlayerId,firstSolid:(a,b)=>firstHuancavelicaV2SolidOnSegment(room,a,b)});
-    // Preserve the existing minimum visible duration without moving the contact.
-    const minimumMs=(q.weaponType??'basic')==='basic'?4000:4667;
+    const hit=traceFlight(shot,{players:room.players,ownerId:q.ownerPlayerId,firstSolid:(a,b)=>firstHuancavelicaV2SolidOnSegment(room,a,b),width:terrain.geometry?.worldWidth??5000,height:terrain.geometry?.worldHeight??3750});
+    // The offline basic-shot experiment keeps physical time. Every other path
+    // retains the accepted cinematic pacing, including all special weapons.
+    const basic=(q.weaponType??'basic')==='basic';
+    const minimumMs=basic?(timing.basicFlightMode==='physical'?0:4000):4667;
     const stretch=hit.seconds>0?Math.max(1,minimumMs/(hit.seconds*1000)):1;
     shot.vx/=stretch;shot.vy/=stretch;shot.gravity/=stretch**2;shot.windAccel/=stretch**2;shot.collisionTimeScale*=stretch;
     Object.assign(shot,{impactX:hit.x,impactY:hit.y,impactReason:hit.type,hitPlayerId:hit.targetPlayerId,
@@ -21,10 +23,10 @@ export function adjustProjectile(room,q,terrain){
   if(q.weaponType==='triple'){
     const middle=q.volley[1];for(const key of ['startX','startY','vx','vy','gravity','windAccel','collisionTimeScale','impactX','impactY','impactAt','durationMs','impactReason','hitPlayerId'])q[key]=middle[key];
     q.specialResolveAt=Math.max(...q.volley.map(s=>s.impactAt));q.resolveAt=q.specialResolveAt+900;
-  }else q.resolveAt=q.impactAt+900;
+  }else q.resolveAt=q.impactAt+((q.weaponType??'basic')==='basic'?(timing.basicSettleMs??900):900);
   room.match.turnEndsAt=q.resolveAt;return true;
 }
-export function createV2Attack(room,player,{id,startedAt,weaponType='basic',angle=room.match.aimAngle,power=room.match.aimPower},terrain,weapons){
+export function createV2Attack(room,player,{id,startedAt,weaponType='basic',angle=room.match.aimAngle,power=room.match.aimPower,timing={}},terrain,weapons){
  const shot=a=>({...createAimFlight(player,a,power,room.match.wind?.signed??0),id:id+':'+a,ownerPlayerId:player.id,angle:a,power,startedAt,weaponType});
  const q={...shot(angle),id,pickupCollected:false,resolutionApplied:false};
  if(weaponType==='triple')q.volley=[shot(angle-6),shot(angle),shot(angle+6)];
@@ -32,5 +34,5 @@ export function createV2Attack(room,player,{id,startedAt,weaponType='basic',angl
   q.warningUntil=startedAt+1200;
   q.airStrikeShells=Array.from({length:7},(_,index)=>({index,x:0,y:0,visualStartAt:q.warningUntil+index*233,applied:false}));
  }
- adjustProjectile(room,q,terrain);weapons.prepareV2Weapon(room,q);return q;
+ adjustProjectile(room,q,terrain,timing);weapons.prepareV2Weapon(room,q);return q;
 }

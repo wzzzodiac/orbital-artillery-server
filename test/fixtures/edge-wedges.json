@@ -1,0 +1,418 @@
+[
+  {
+    "map": "rolling",
+    "profile": "reference-v1",
+    "damage": false,
+    "x": 940,
+    "dir": -1,
+    "release": 300,
+    "initial": {
+      "spawn": {
+        "x": 940,
+        "y": 3134.9425837320578,
+        "facing": 1
+      },
+      "hp": 100,
+      "alive": true,
+      "v2HorizontalInput": 0
+    },
+    "craters": [],
+    "final": {
+      "spawn": {
+        "x": 659.305979039681,
+        "y": 3686.1759170654145,
+        "facing": -1
+      },
+      "hp": 100,
+      "alive": true,
+      "v2HorizontalInput": 0,
+      "airborne": null,
+      "motion": null
+    },
+    "still": 0
+  },
+  {
+    "map": "rolling",
+    "profile": "reference-v1",
+    "damage": false,
+    "x": 1010,
+    "dir": 1,
+    "release": 900,
+    "initial": {
+      "spawn": {
+        "x": 1010,
+        "y": 3134.9425837320578,
+        "facing": 1
+      },
+      "hp": 100,
+      "alive": true,
+      "v2HorizontalInput": 0
+    },
+    "craters": [],
+    "final": {
+      "spawn": {
+        "x": 1721.2800078330645,
+        "y": 3398.4946207691164,
+        "facing": 1
+      },
+      "hp": 100,
+      "alive": true,
+      "v2HorizontalInput": 0,
+      "airborne": null,
+      "motion": null
+    },
+    "still": 0
+  },
+  {
+    "map": "brokenridge",
+    "profile": "legacy",
+    "damage": false,
+    "x": 450,
+    "dir": 1,
+    "release": 300,
+    "initial": {
+      "spawn": {
+        "x": 450,
+        "y": 3063.172248803828,
+        "facing": 1
+      },
+      "hp": 100,
+      "alive": true,
+      "v2HorizontalInput": 0
+    },
+    "craters": [],
+    "final": {
+      "spawn": {
+        "x": 938.8095285101323,
+        "y": 3392.4433599149543,
+        "facing": 1
+      },
+      "hp": 100,
+      "alive": true,
+      "v2HorizontalInput": 0,
+      "airborne": null,
+      "motion": null
+    },
+    "still": 0
+  },
+  {
+    "map": "brokenridge",
+    "profile": "legacy",
+    "damage": false,
+    "x": 870,
+    "dir": -1,
+    "release": 300,
+    "initial": {
+      "spawn": {
+        "x": 870,
+        "y": 3063.172248803828,
+        "facing": 1
+      },
+      "hp": 100,
+      "alive": true,
+      "v2HorizontalInput": 0
+    },
+    "craters": [],
+    "final": {
+      "spawn": {
+        "x": 379.87605248166255,
+        "y": 3769.349582137202,
+        "facing": -1
+      },
+      "hp": 100,
+      "alive": true,
+      "v2HorizontalInput": 0,
+      "airborne": null,
+      "motion": null
+    },
+    "still": 0
+  },
+  {
+    "map": "brokenridge",
+    "profile": "legacy",
+    "damage": false,
+    "x": 1430,
+    "dir": -1,
+    "release": 300,
+    "initial": {
+      "spawn": {
+        "x": 1430,
+        "y": 2734.224880382775,
+        "facing": 1
+      },
+      "hp": 100,
+      "alive": true,
+      "v2HorizontalInput": 0
+    },
+    "craters": [],
+    "final": {
+      "spawn": {
+        "x": 941.097136843282,
+        "y": 3390.9022137161433,
+        "facing": -1
+      },
+      "hp": 100,
+      "alive": true,
+      "v2HorizontalInput": 0,
+      "airborne": null,
+      "motion": null
+    },
+    "still": 0
+  },
+  {
+    "map": "brokenridge",
+    "profile": "legacy",
+    "damage": false,
+    "x": 1710,
+    "dir": -1,
+    "release": 300,
+    "initial": {
+      "spawn": {
+        "x": 1710,
+        "y": 2734.224880382775,
+        "facing": 1
+      },
+      "hp": 100,
+      "alive": true,
+      "v2HorizontalInput": 0
+    },
+    "craters": [],
+    "final": {
+      "spawn": {
+        "x": 1219.9359687322808,
+        "y": 3422.0688803828125,
+        "facing": -1
+      },
+      "hp": 100,
+      "alive": true,
+      "v2HorizontalInput": 0,
+      "airborne": null,
+      "motion": null
+    },
+    "still": 0
+  },
+  {
+    "map": "brokenridge",
+    "profile": "legacy",
+    "damage": false,
+    "x": 2900,
+    "dir": 1,
+    "release": 900,
+    "initial": {
+      "spawn": {
+        "x": 2900,
+        "y": 2853.842105263158,
+        "facing": 1
+      },
+      "hp": 100,
+      "alive": true,
+      "v2HorizontalInput": 0
+    },
+    "craters": [],
+    "final": {
+      "spawn": {
+        "x": 3812.8103280233363,
+        "y": 3389.519438596518,
+        "facing": 1
+      },
+      "hp": 100,
+      "alive": true,
+      "v2HorizontalInput": 0,
+      "airborne": null,
+      "motion": null
+    },
+    "still": 0
+  },
+  {
+    "map": "brokenridge",
+    "profile": "legacy",
+    "damage": false,
+    "x": 4300,
+    "dir": -1,
+    "release": 300,
+    "initial": {
+      "spawn": {
+        "x": 4300,
+        "y": 2773.1004784689,
+        "facing": 1
+      },
+      "hp": 100,
+      "alive": true,
+      "v2HorizontalInput": 0
+    },
+    "craters": [],
+    "final": {
+      "spawn": {
+        "x": 3810.831787652707,
+        "y": 3389.4444784689326,
+        "facing": -1
+      },
+      "hp": 100,
+      "alive": true,
+      "v2HorizontalInput": 0,
+      "airborne": null,
+      "motion": null
+    },
+    "still": 0
+  },
+  {
+    "map": "brokenridge",
+    "profile": "reference-v1",
+    "damage": false,
+    "x": 660,
+    "dir": -1,
+    "release": 300,
+    "initial": {
+      "spawn": {
+        "x": 660,
+        "y": 3063.172248803828,
+        "facing": 1
+      },
+      "hp": 100,
+      "alive": true,
+      "v2HorizontalInput": 0
+    },
+    "craters": [],
+    "final": {
+      "spawn": {
+        "x": 378.94973271752747,
+        "y": 3769.2539154705173,
+        "facing": -1
+      },
+      "hp": 100,
+      "alive": true,
+      "v2HorizontalInput": 0,
+      "airborne": null,
+      "motion": null
+    },
+    "still": 0
+  },
+  {
+    "map": "brokenridge",
+    "profile": "reference-v1",
+    "damage": false,
+    "x": 660,
+    "dir": 1,
+    "release": 300,
+    "initial": {
+      "spawn": {
+        "x": 660,
+        "y": 3063.172248803828,
+        "facing": 1
+      },
+      "hp": 100,
+      "alive": true,
+      "v2HorizontalInput": 0
+    },
+    "craters": [],
+    "final": {
+      "spawn": {
+        "x": 939.9737677903951,
+        "y": 3390.5491006557027,
+        "facing": 1
+      },
+      "hp": 100,
+      "alive": true,
+      "v2HorizontalInput": 0,
+      "airborne": null,
+      "motion": null
+    },
+    "still": 0
+  },
+  {
+    "map": "brokenridge",
+    "profile": "reference-v1",
+    "damage": false,
+    "x": 1500,
+    "dir": -1,
+    "release": 300,
+    "initial": {
+      "spawn": {
+        "x": 1500,
+        "y": 2734.224880382775,
+        "facing": 1
+      },
+      "hp": 100,
+      "alive": true,
+      "v2HorizontalInput": 0
+    },
+    "craters": [],
+    "final": {
+      "spawn": {
+        "x": 1218.9883345594637,
+        "y": 3422.3065470494644,
+        "facing": -1
+      },
+      "hp": 100,
+      "alive": true,
+      "v2HorizontalInput": 0,
+      "airborne": null,
+      "motion": null
+    },
+    "still": 0
+  },
+  {
+    "map": "brokenridge",
+    "profile": "reference-v1",
+    "damage": false,
+    "x": 2060,
+    "dir": 1,
+    "release": 900,
+    "initial": {
+      "spawn": {
+        "x": 2060,
+        "y": 3254.5598086124405,
+        "facing": 1
+      },
+      "hp": 100,
+      "alive": true,
+      "v2HorizontalInput": 0
+    },
+    "craters": [],
+    "final": {
+      "spawn": {
+        "x": 2663.3717437211503,
+        "y": 3348.9598086124593,
+        "facing": 1
+      },
+      "hp": 100,
+      "alive": true,
+      "v2HorizontalInput": 0,
+      "airborne": null,
+      "motion": null
+    },
+    "still": 0
+  },
+  {
+    "map": "brokenridge",
+    "profile": "reference-v1",
+    "damage": false,
+    "x": 3530,
+    "dir": 1,
+    "release": 300,
+    "initial": {
+      "spawn": {
+        "x": 3530,
+        "y": 3173.818181818182,
+        "facing": 1
+      },
+      "hp": 100,
+      "alive": true,
+      "v2HorizontalInput": 0
+    },
+    "craters": [],
+    "final": {
+      "spawn": {
+        "x": 3809.3903329526747,
+        "y": 3391.0586679293156,
+        "facing": 1
+      },
+      "hp": 100,
+      "alive": true,
+      "v2HorizontalInput": 0,
+      "airborne": null,
+      "motion": null
+    },
+    "still": 0
+  }
+]

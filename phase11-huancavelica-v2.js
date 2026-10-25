@@ -1,4 +1,5 @@
 import { findRoomBySocket, getRoom, createPublicStateView,beginTurn,finishMatch } from './rooms.js';
+import {PLAYABLE_TERRAINS,isPlayableTerrain,randomPlayableTerrain} from './map-catalog.js';
 import {snapshotCombatState,recordCombatEvents} from './phase7a1.js';
 import {V2_AIR_PHYSICS,advanceV2AirbornePlayer,setV2AirInput,startV2Airborne,v2GroundSurface,walkV2Player} from './huancavelica-v2-airborne.js';
 import { V2_SPAWN_HINTS as SPAWN_IMAGE_HINTS, v2SpawnAtHint as spawnAtHint, isV2Room as isV2, installV2ArenaMetadata } from './huancavelica-v2-state.js';
@@ -44,7 +45,6 @@ import {
 } from './huancavelica-v2-bitmap.js';
 
 const COLLISION_BASE='islands';
-const LEGACY_HUANCAVELICA_ID='huancavelica';
 const WALK_STEP=15;
 const MAX_WALK_SURFACE_DELTA=42;
 
@@ -155,7 +155,7 @@ function advanceOnV2(code,now=Date.now()){
 }
 
 function decoratePublic(room,state){
-  const presets=(state?.terrainPresets??[]).filter(entry=>entry.id!==LEGACY_HUANCAVELICA_ID);if(!presets.some(entry=>entry.id===HUANCAVELICA_V2_ID))presets.push({id:HUANCAVELICA_V2_ID,name:HUANCAVELICA_V2_NAME,terrainRevision:HUANCAVELICA_V2_REVISION});state.terrainPresets=presets;
+  const presets=PLAYABLE_TERRAINS.map(map=>map.id===HUANCAVELICA_V2_ID?{...map,terrainRevision:HUANCAVELICA_V2_REVISION}:{...map});state.terrainPresets=presets;
   if(isV2(room)){installV2Arena(room);state=basePublic(room);state.terrainPresets=presets;state.terrainPreset=HUANCAVELICA_V2_ID;state.arena={...(state.arena??{}),terrainPreset:HUANCAVELICA_V2_ID,terrainName:HUANCAVELICA_V2_NAME,phase11Theme:HUANCAVELICA_V2_ID,terrainRevision:HUANCAVELICA_V2_REVISION,collisionModel:HUANCAVELICA_V2_COLLISION_MODEL,platforms:[],worldWidth:HUANCAVELICA_V2_WORLD_WIDTH,worldHeight:HUANCAVELICA_V2_WORLD_HEIGHT,bitmapTerrain:{width:HUANCAVELICA_V2_IMAGE_WIDTH,height:HUANCAVELICA_V2_IMAGE_HEIGHT,worldWidth:HUANCAVELICA_V2_WORLD_WIDTH,worldHeight:HUANCAVELICA_V2_WORLD_HEIGHT,uniformScale:HUANCAVELICA_V2_SCALE,maskSource:'cleaned-terrain-alpha-guided-by-supplied-mask'}};state.players=state.players.map(p=>({...p,airborne:room.players.find(source=>source.id===p.id)?.airborne?{...room.players.find(source=>source.id===p.id).airborne}:null}));state.phase11Map={id:HUANCAVELICA_V2_ID,name:HUANCAVELICA_V2_NAME,terrainRevision:HUANCAVELICA_V2_REVISION,collisionModel:HUANCAVELICA_V2_COLLISION_MODEL,oneIslandOnePlayableSurface:true,oldPlatformGraphAuthority:false,normalMovementStep:WALK_STEP,normalWalkableSurfaceDelta:MAX_WALK_SURFACE_DELTA,normalJumpDistance:null,adaptiveMaxDistance:null,airPhysics:V2_AIR_PHYSICS,productionReady:true};}
   return state;
 }
@@ -166,22 +166,50 @@ export function publicRoomState11(room){
   installV2Arena(view);
   return decoratePublic(view,basePublic(view));
 }
-export function setTerrain11(id,terrain){const requested=typeof terrain==='string'?terrain.toLowerCase():null;if(!requested||requested===LEGACY_HUANCAVELICA_ID)return{ok:false,error:'invalid_terrain'};const v2=requested===HUANCAVELICA_V2_ID,result=baseSetTerrain(id,v2?COLLISION_BASE:requested);if(!result.ok)return result;result.room.phase11TerrainAlias=v2?HUANCAVELICA_V2_ID:null;result.room.phase11TerrainRevision=v2?HUANCAVELICA_V2_REVISION:null;result.room.phase11SpawnKey=null;for(const player of result.room.players??[])player.ready=false;if(v2)installV2Arena(result.room);return result;}
+function selectedTerrain(room){return isV2(room)?HUANCAVELICA_V2_ID:room?.phase10TerrainAlias??room?.terrainPreset;}
+export function setTerrain11(id,terrain){
+ let requested=typeof terrain==='string'?terrain.toLowerCase():null;
+ if(requested==='random'){
+  const room=findRoomBySocket(id);
+  if(!room)return{ok:false,error:'not_in_room'};
+  if(room.status!=='lobby')return{ok:false,error:'room_already_started'};
+  if(room.hostId!==id)return{ok:false,error:'host_only'};
+  requested=randomPlayableTerrain(selectedTerrain(room));
+ }
+ if(!isPlayableTerrain(requested))return{ok:false,error:'invalid_terrain'};
+ const v2=requested===HUANCAVELICA_V2_ID,result=baseSetTerrain(id,v2?COLLISION_BASE:requested);
+ if(!result.ok)return result;
+ result.room.phase11TerrainAlias=v2?HUANCAVELICA_V2_ID:null;
+ result.room.phase11TerrainRevision=v2?HUANCAVELICA_V2_REVISION:null;
+ result.room.phase11SpawnKey=null;
+ // A lobby map switch discards its old preview, including any bitmap alias.
+ result.room.arena=null;
+ for(const player of result.room.players??[])player.ready=false;
+ return result;
+}
 export function moveActivePlayer11(id,direction){const room=findRoomBySocket(id);return isV2(room)?moveOnV2(id,direction):baseMove(id,direction);}
 export function jumpActivePlayer11(id,direction){const room=findRoomBySocket(id);return isV2(room)?jumpOnV2(id,direction):baseJump(id,direction);}
 export function fireProjectile11(id){const room=findRoomBySocket(id);return isV2(room)?fireOnV2(id):baseFire(id);}
 export function advanceTurnIfDue11(code,now=Date.now()){return advanceOnV2(code,now);}
 export function rematchRoom11(id,options={}){
-  const room=findRoomBySocket(id),keepV2=isV2(room)&&!options?.randomMap;
-  const oldAlias=room?.phase11TerrainAlias;
-  // A random rematch initializes its selected legacy map, not the previous v2.
-  const clearAlias=Boolean(room&&isV2(room)&&options?.randomMap&&room.hostId===id&&room.status==='finished');
-  if(clearAlias)room.phase11TerrainAlias=null;
-  const result=baseRematch(id,options);
-  if(!result?.ok){if(clearAlias)room.phase11TerrainAlias=oldAlias;return result;}
-  result.room.phase11TerrainAlias=keepV2?HUANCAVELICA_V2_ID:null;
-  result.room.phase11TerrainRevision=keepV2?HUANCAVELICA_V2_REVISION:null;
-  if(keepV2)installV2Arena(result.room);
+  const room=findRoomBySocket(id);
+  if(!room||room.hostId!==id||room.status!=='finished')return baseRematch(id,options);
+  if(room.players.length<2)return{ok:false,error:'not_enough_players'};
+  const current=selectedTerrain(room),next=options?.randomMap?randomPlayableTerrain(current):isPlayableTerrain(current)?current:'rolling';
+  const keys=['terrainPreset','phase10TerrainAlias','phase10MapRevision','phase11TerrainAlias','phase11TerrainRevision','phase11SpawnKey'];
+  const previous=keys.map(key=>({key,own:Object.hasOwn(room,key),value:room[key]}));
+  const v2=next===HUANCAVELICA_V2_ID;
+  room.terrainPreset=v2?COLLISION_BASE:next;
+  room.phase10TerrainAlias=null;room.phase10MapRevision=null;
+  room.phase11TerrainAlias=v2?HUANCAVELICA_V2_ID:null;
+  room.phase11TerrainRevision=v2?HUANCAVELICA_V2_REVISION:null;room.phase11SpawnKey=null;
+  // Select from the public catalog before initialization so the correct map
+  // owns spawn placement. The historical random pool must not run a second time.
+  const result=baseRematch(id,{...options,randomMap:false});
+  if(!result?.ok){for(const {key,own,value}of previous){if(own)room[key]=value;else delete room[key];}return result;}
+  const event=result.room.matchTelemetry?.events?.findLast(entry=>entry.type==='rematch');
+  if(event){event.randomMap=Boolean(options?.randomMap);event.text=options?.randomMap?'Rematch started on a random map.':next===current?'Rematch started on the same map.':'Rematch started on an available map.';}
+  if(v2)installV2Arena(result.room);
   return result;
 }
 
