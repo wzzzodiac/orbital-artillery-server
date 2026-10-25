@@ -45,13 +45,18 @@ test('real Socket.IO transport survives malformed events and enforces map author
     await fetchText(endpoint, '40');
     assert.ok((await fetchText(endpoint)).startsWith('40'));
     let ackId = 0;
+    const received = [];
     return {
+      received,
+      async poll() { return (await fetchText(endpoint)).split("\x1e"); },
       async raw(args) { await fetchText(endpoint, '42' + JSON.stringify(args)); },
       async request(event, payload, ...extra) {
+        received.length = 0;
         const id = ++ackId;
         await fetchText(endpoint, `42${id}` + JSON.stringify([event, payload, ...extra]));
         for (let i = 0; i < 10; i++) {
           const packets = (await fetchText(endpoint)).split('\x1e');
+          received.push(...packets);
           const ack = packets.find(packet => packet.startsWith(`43${id}[`));
           if (ack) return JSON.parse(ack.slice(2 + String(id).length))[0];
         }
@@ -79,6 +84,9 @@ test('real Socket.IO transport survives malformed events and enforces map author
   assert.equal((await guest.request('set_terrain', { terrain: 'rolling' })).error, 'host_only');
   const state = await host.request('set_ready', { ready: true });
   assert.equal(state.room.terrainPreset, 'huancavelica-v2');
+  assert.ok(!host.received.some(packet => packet.startsWith('42') && packet.includes('room_state')), 'state ACK must not be duplicated to sender');
+  await host.raw(['set_ready', { ready: false }]);
+  assert.ok((await host.poll()).some(packet => packet.startsWith('42') && packet.includes('room_state')), 'fire-and-forget still receives state');
   assert.deepEqual(await host.request('set_terrain', { terrain: 'islands' }),{ok:false,error:'invalid_terrain'});
   const retained=await host.request('set_terrain',{terrain:'brokenridge'});
   assert.equal(retained.room.terrainPreset,'brokenridge');

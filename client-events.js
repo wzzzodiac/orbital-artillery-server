@@ -39,16 +39,18 @@ export function isValidClientPayload(event, payload) {
   return true;
 }
 
-export function onClientEvent(socket, event, handler) {
+export function onClientEvent(socket, event, handler, { onAccepted = () => {} } = {}) {
   if (!Object.hasOwn(schemas, event)) throw new Error('Unknown client event schema');
   socket.on(event, async (...args) => {
     const ack = typeof args.at(-1) === 'function' ? args.pop() : null;
     let replied = false;
     const reply = result => {
-      if (replied || !ack) return;
+      if (replied) return false;
       replied = true;
+      if (result?.ok) onAccepted();
+      if (!ack) return false;
       // A failed acknowledgement must not escape the event boundary.
-      try { ack(result); } catch { /* The transport may already be closed. */ }
+      try { ack(result); return true; } catch { return false; }
     };
     try {
       const payload = args.length === 0 ? {} : args[0];
@@ -63,4 +65,10 @@ export function onClientEvent(socket, event, handler) {
       reply({ ok: false, error: 'internal_error' });
     }
   });
+}
+
+// ACK callers already receive the state. Fire-and-forget callers still need the broadcast.
+export function replyRoomState(socket, io, roomCode, state, reply, extra = {}) {
+  const acknowledged = reply({ ok: true, room: state, ...extra });
+  (acknowledged ? socket.to(roomCode) : io.to(roomCode)).emit('room_state', state);
 }
