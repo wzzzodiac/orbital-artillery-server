@@ -1,7 +1,7 @@
 // Cosmetic identifiers only. Shared by browser and server; never changes physics.
 export const ANIMALS=Object.freeze([
- {id:'cuy',label:'Cuy'},{id:'fox',label:'Zorro'},{id:'rabbit',label:'Conejo'},
- {id:'capybara',label:'Capibara'},{id:'bear',label:'Oso'},{id:'cat',label:'Gato'}
+ {id:'cuy',label:'Cuy'},{id:'fox',label:'Fox'},{id:'rabbit',label:'Rabbit'},
+ {id:'capybara',label:'Capibara'},{id:'bear',label:'Bear'},{id:'cat',label:'Cat'}
 ].map(Object.freeze));
 export const CARTS=Object.freeze([
  {id:'mototaxi',label:'Mototaxi'},{id:'tico',label:'Tico amarillo'},
