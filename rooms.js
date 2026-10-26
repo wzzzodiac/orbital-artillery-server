@@ -357,6 +357,19 @@ export function startRoom(socketId) {
   if (room.mode === 'team') { const teamA = room.players.filter(player => player.team === 'A').length, teamB = room.players.filter(player => player.team === 'B').length; if (!teamA || !teamB) return { ok: false, error: 'both_teams_required' }; }
   assignArena(room); initializeV2Spawns(room); initializeThemedSpawns(room); room.status = 'countdown'; room.startedAt = Date.now(); return { ok: true, room };
 }
+export function returnToLobby(socketId) {
+  const room = findRoomBySocket(socketId);
+  if (!room) return { ok: false, error: 'not_in_room' };
+  if (room.hostId !== socketId) return { ok: false, error: 'host_only' };
+  Object.assign(room, { status: 'lobby', arena: null, match: null, camera: null, startedAt: null,
+    pickups: [], lastPickupSpawnTurn: 0, phase9PickupAttemptTurn: 0, matchTelemetry: null,
+    phase11SpawnKey: null, lastLobbyActivityAt: Date.now() });
+  for (const p of room.players) Object.assign(p, { ready: false, alive: true, hp: MAX_HP,
+    spawn: null, motion: null, airborne: null, v2HorizontalInput: 0, v2WalkNextAt: null,
+    outOfWorld: false, lastDamage: null, lastPickup: null, lastUtility: null,
+    pickupCollectedTurn: -1, inventory: [null, null], selectedItemSlot: 1, shield: null });
+  return { ok: true, room };
+}
 export function activateRoom(roomCode, now = Date.now()) { const room = getRoom(roomCode); if (!room || room.status !== 'countdown') return null; room.status = 'started'; room.match.activatedAt = now; return beginTurn(room, 0, now); }
 
 function validateTurnAction(socketId) {

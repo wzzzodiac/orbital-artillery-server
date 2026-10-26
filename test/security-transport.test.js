@@ -91,6 +91,27 @@ test('real Socket.IO transport survives malformed events and enforces map author
   const retained=await host.request('set_terrain',{terrain:'brokenridge'});
   assert.equal(retained.room.terrainPreset,'brokenridge');
   assert.deepEqual(retained.room.terrainPresets.map(map=>map.id),['rolling','brokenridge','huancavelica-v2']);
+  assert.equal((await guest.request('return_to_lobby',{})).error,'host_only');
+  assert.equal((await host.request('return_to_lobby',{gravity:1})).error,'invalid_payload');
+  await host.request('set_ready',{ready:true});await guest.request('set_ready',{ready:true});
+  const countdown=await host.request('start_game',{});
+  assert.equal(countdown.room.status,'countdown');
+  assert.equal(countdown.room.gameplay.air.gravity,2600);
+  const lobby=await host.request('return_to_lobby',{});
+  assert.equal(lobby.room.status,'lobby');assert.equal(lobby.room.match,null);
+  assert.equal(lobby.room.code,created.room.code);assert.equal(lobby.room.players.length,2);
+  assert.ok(lobby.room.players.every(p=>!p.ready));
+  assert.equal((await host.request('leave_party',{})).ok,true);
+  // A departed host is unsubscribed even while the same socket stays connected.
+  const newHost=await guest.request('set_mode',{mode:'survival'});
+  assert.equal(newHost.ok,true);assert.ok(newHost.room.players[0].isHost);
+  const rejoined=await host.request('join_room',{name:'Host again',code:created.room.code});
+  assert.equal(rejoined.ok,true);assert.equal(rejoined.room.players.length,2);
+  assert.ok(!host.received.some(packet=>packet.startsWith('42')&&packet.includes('room_state')),'departed socket must not receive old room broadcasts');
+  assert.equal((await host.request('leave_party',{})).ok,true);
+  assert.equal((await guest.request('leave_party',{})).ok,true);
+  assert.equal((await guest.request('join_room',{name:'Missing',code:created.room.code})).error,'room_not_found');
+  assert.equal((await host.request('create_room',{name:'New party'})).ok,true,'same connection may create another room');
   assert.equal(JSON.parse(await fetchText('/health')).ok, true);
   assert.equal(child.exitCode, null);
 });
