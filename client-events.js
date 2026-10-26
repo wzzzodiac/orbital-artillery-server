@@ -15,6 +15,8 @@ const schemas = {
   set_ready: { required: { ready: boolean } },
   set_team: { required: { team: text(8) } },
   start_game: {},
+  return_to_lobby: {},
+  leave_party: {},
   rematch_game: { optional: { randomMap: boolean } },
   move_player: { required: { direction } },
   air_input: { required: { direction } },

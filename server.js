@@ -13,6 +13,7 @@ import {
   roomStore,
   setGameMode,
   setPlayerReady,
+  returnToLobby,
   setPlayerTeam
 } from './rooms.js';
 import {
@@ -132,6 +133,16 @@ io.on('connection', socket => {
   onEvent('set_team', (payload, reply = () => {}) => { if (!allowRoomAction()) return reply({ ok: false, error: 'room_action_rate_limited' }); replyMutation(setPlayerTeam(socket.id, String(payload?.team ?? '').toUpperCase()), reply); });
   onEvent('start_game', (_payload, reply = () => {}) => { if (!allowRoomAction()) return reply({ ok: false, error: 'room_action_rate_limited' }); replyMutation(startRoom(socket.id), reply); });
   onEvent('rematch_game', (payload, reply = () => {}) => { if (!allowRoomAction()) return reply({ ok: false, error: 'room_action_rate_limited' }); replyMutation(rematchRoom9(socket.id, { randomMap: Boolean(payload?.randomMap) }), reply); });
+  onEvent('return_to_lobby', (_payload, reply) => { if (!allowRoomAction()) return reply({ ok: false, error: 'room_action_rate_limited' }); replyMutation(returnToLobby(socket.id), reply); });
+  onEvent('leave_party', async (_payload, reply) => {
+    if (!allowRoomAction()) return reply({ ok: false, error: 'room_action_rate_limited' });
+    const room = findRoomBySocket(socket.id);
+    if (!room) return reply({ ok: false, error: 'not_in_room' });
+    await socket.leave(room.code);
+    const removal = disconnectPlayer9(socket.id);
+    if (removal?.room) emitRoomState(removal.room);
+    reply({ ok: true });
+  });
   onEvent('move_player', (payload, reply = () => {}) => replyTurnAction(moveActivePlayer9(socket.id, payload?.direction), reply));
   onEvent('jump_player', (payload, reply = () => {}) => replyTurnAction(jumpActivePlayer9(socket.id, payload?.direction), reply));
   onEvent('air_input', (payload, reply = () => {}) => replyTurnAction(setAirInput11(socket.id,payload.direction),reply));
